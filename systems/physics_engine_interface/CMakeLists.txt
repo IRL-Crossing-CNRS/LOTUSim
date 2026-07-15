@@ -54,6 +54,7 @@ src/physics_interface_plugin.cpp
   src/xdyn_websocket.cpp
   src/ros2_interface.cpp
   src/kinematic_interface.cpp
+  src/ocean_current_feed.cpp
 )
 
 target_include_directories(physics_interface_plugin PUBLIC

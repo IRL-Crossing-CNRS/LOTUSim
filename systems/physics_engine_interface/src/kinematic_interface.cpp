@@ -115,19 +115,37 @@ KinematicInterface::getNewState(
 
     const double yaw = previous_state.pose.Yaw();
 
+    // World-frame (ENU) ocean current, added on top of the commanded body-
+    // frame velocity: a fake, uniform drift applied to every kinematic
+    // vessel (and thruster-less props such as mines) regardless of domain.
+    const double cx = m_current_x.load(std::memory_order_relaxed);
+    const double cy = m_current_y.load(std::memory_order_relaxed);
+
     gz::math::Pose3d pose = previous_state.pose;
-    pose.SetX(pose.X() + u * std::cos(yaw) * dt_s);
-    pose.SetY(pose.Y() + u * std::sin(yaw) * dt_s);
+    pose.SetX(pose.X() + (u * std::cos(yaw) + cx) * dt_s);
+    pose.SetY(pose.Y() + (u * std::sin(yaw) + cy) * dt_s);
     pose.Rot().SetFromEuler(pose.Roll(), pose.Pitch(), yaw + w * dt_s);
     new_state.pose = pose;
 
     // World-frame velocities for the velocity components written to the ECM.
-    new_state.lin_vel.Set(u * std::cos(yaw), u * std::sin(yaw), 0.0);
+    new_state.lin_vel.Set(u * std::cos(yaw) + cx, u * std::sin(yaw) + cy, 0.0);
     new_state.ang_vel.Set(0.0, 0.0, w);
 
     logEngineState(new_state, domain);
 
     return std::make_optional(std::make_tuple(new_state, domain));
+}
+
+void KinematicInterface::setCurrent(double x, double y)
+{
+    m_current_x.store(x, std::memory_order_relaxed);
+    m_current_y.store(y, std::memory_order_relaxed);
+    if (m_logger) {
+        m_logger->info(
+            "KinematicInterface::setCurrent: ocean current set to ({}, {}) m/s (ENU).",
+            x,
+            y);
+    }
 }
 
 bool KinematicInterface::activateConnection(const gz::sim::Entity&)

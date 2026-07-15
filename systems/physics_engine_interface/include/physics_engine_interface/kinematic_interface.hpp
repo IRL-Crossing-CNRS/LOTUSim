@@ -10,6 +10,7 @@
 #ifndef LOTUSIM_KINEMATIC_INTERFACE_HH_
 #define LOTUSIM_KINEMATIC_INTERFACE_HH_
 
+#include <atomic>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -87,6 +88,17 @@ public:
 
     std::string getURI(const gz::sim::Entity& _entity) override;
 
+    /**
+     * @brief Set a world-frame (ENU) ocean current applied to every kinematic
+     * vessel's position update, in addition to its own commanded velocity.
+     *
+     * Fed by PhysicsInterfacePlugin from the `ocean_current` ROS topic. This
+     * is a fake/uniform current (no depth or spatial variation) meant to
+     * perturb Kinematic-connected vehicles and props (e.g. mines) without
+     * requiring xdyn.
+     */
+    void setCurrent(double x, double y);
+
 private:
     static std::shared_ptr<KinematicInterface> m_instance;
 
@@ -99,6 +111,16 @@ private:
      * plugin's transition logic stays a no-op for kinematic vessels.
      */
     std::unordered_map<gz::sim::Entity, DomainType> m_entity_domain;
+
+    /**
+     * @brief World-frame (ENU) ocean current, m/s. Plain atomics: read by
+     * every vessel's getNewState (possibly concurrently, one instance shared
+     * across all kinematic vessels), written rarely from the ROS callback. A
+     * torn read across x/y for a single integration step is harmless for a
+     * cosmetic current, so no need to route this through m_variable_mutex.
+     */
+    std::atomic<double> m_current_x{0.0};
+    std::atomic<double> m_current_y{0.0};
 };
 
 }  // namespace lotusim::gazebo
