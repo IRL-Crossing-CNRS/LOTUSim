@@ -24,6 +24,12 @@ PhysicsInterfacePlugin::PhysicsInterfacePlugin()
 
 PhysicsInterfacePlugin::~PhysicsInterfacePlugin()
 {
+    if (m_ros_executor) {
+        m_ros_executor->cancel();
+    }
+    if (m_ros_node_thread && m_ros_node_thread->joinable()) {
+        m_ros_node_thread->join();
+    }
     m_logger->info(
         "PhysicsInterfacePlugin::~PhysicsInterfacePlugin: PhysicsInterfacePlugin successfully shutdown.");
 }
@@ -47,24 +53,48 @@ void PhysicsInterfacePlugin::Configure(
         "vessel_cmd_array",
         10,
         [this](lotusim_msgs::msg::VesselCmdArray::ConstSharedPtr msgs) -> void {
+            // Runs on the dedicated spin thread: resolve the entity under the
+            // mapping lock and stage the command; Update() drains the staged
+            // commands into the shared map on the main thread.
             for (auto&& msg : msgs->cmds) {
-                int entity;
-                if (msg.vessel_name.empty() && msg.entity) {
-                    entity = msg.entity;
-                } else if (
-                    m_vessels_model_map.find(msg.vessel_name) !=
-                    m_vessels_model_map.end()) {
-                    entity = m_vessels_model_map[msg.vessel_name];
-                } else {
-                    m_logger->error(
-                        "PhysicsInterfacePlugin::Topic lotusim_vessel_cmd callback failed. No known entity: {}, {}",
-                        msg.entity,
-                        msg.vessel_name);
-                    continue;
+                gz::sim::Entity entity;
+                {
+                    std::shared_lock<std::shared_mutex> lock(m_mutex);
+                    auto it = m_vessels_model_map.find(msg.vessel_name);
+                    if (msg.vessel_name.empty() && msg.entity) {
+                        entity = msg.entity;
+                    } else if (it != m_vessels_model_map.end()) {
+                        entity = it->second;
+                    } else {
+                        m_logger->error(
+                            "PhysicsInterfacePlugin::Topic lotusim_vessel_cmd callback failed. No known entity: {}, {}",
+                            msg.entity,
+                            msg.vessel_name);
+                        continue;
+                    }
                 }
-                (*m_vessels_cmd_map_ptr)[entity] = std::move(msg.cmd_string);
+                std::lock_guard<std::mutex> lock(m_pending_cmds_mutex);
+                m_pending_cmds[entity] = msg.cmd_string;
             }
         });
+
+    // Optional fake ocean current (see ocean_current_feed.hpp) — a demo
+    // feature kept out of this shared plugin's own logic on purpose.
+    m_ocean_current_feed = std::make_unique<OceanCurrentFeed>(m_ros_node);
+
+    // Service the command subscription on its own thread so every message is
+    // consumed on arrival (see m_ros_executor doc in the header). Mirrors the
+    // WaypointFollowerPlugin's node-thread pattern.
+    if (rclcpp::ok()) {
+        m_ros_executor =
+            std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+        m_ros_executor->add_node(m_ros_node);
+        m_ros_node_thread = std::make_shared<std::thread>(
+            [this]() { m_ros_executor->spin(); });
+    } else {
+        m_logger->error(
+            "PhysicsInterfacePlugin::Configure: RCLCPP context shutdown.");
+    }
 
     m_logger->debug(
         "PhysicsInterfacePlugin debug initiated\n {}",
@@ -81,11 +111,15 @@ void PhysicsInterfacePlugin::Update(
     _ecm.EachRemoved<gz::sim::components::ModelSdf>(
         std::bind(&PhysicsInterfacePlugin::deleteVessel, this, _1, _2, &_ecm));
 
-    if (rclcpp::ok()) {
-        rclcpp::spin_some(m_ros_node);
-    } else {
-        m_logger->error(
-            "PhysicsInterfacePlugin::Update: RCLCPP context shutdown.");
+    // Drain the commands staged by the spin thread into the shared map. The
+    // shared map itself stays single-threaded: written here on the main
+    // thread, read by the per-vessel async updates below.
+    {
+        std::lock_guard<std::mutex> lock(m_pending_cmds_mutex);
+        for (auto& [entity, cmd] : m_pending_cmds) {
+            (*m_vessels_cmd_map_ptr)[entity] = std::move(cmd);
+        }
+        m_pending_cmds.clear();
     }
 
     if (_info.dt.count() == 0) {

@@ -38,6 +38,7 @@
 #include "lotusim_msgs/msg/vessel_cmd.hpp"
 #include "lotusim_msgs/msg/vessel_cmd_array.hpp"
 #include "physics_engine_interface/kinematic_interface.hpp"
+#include "physics_engine_interface/ocean_current_feed.hpp"
 #include "physics_engine_interface/physics_interface_base.hpp"
 #include "physics_engine_interface/ros2_interface.hpp"
 #include "physics_engine_interface/xdyn_websocket.hpp"
@@ -272,6 +273,35 @@ private:
      */
     rclcpp::Subscription<lotusim_msgs::msg::VesselCmdArray>::SharedPtr
         m_cmd_array_sub;
+
+    /**
+     * @brief Optional fake ocean current feed (see ocean_current_feed.hpp for
+     * why this lives in its own class/file rather than inline here).
+     */
+    std::unique_ptr<OceanCurrentFeed> m_ocean_current_feed;
+
+    /**
+     * @brief Dedicated executor + thread servicing m_ros_node.
+     *
+     * Commands used to be consumed with rclcpp::spin_some() once per Update.
+     * spin_some takes at most ONE message per subscription per call, so with a
+     * 0.1 s physics step the host consumed at most 10 commands/s while N
+     * remote agents publish N*20/s: the depth-10 queue overflowed, most
+     * commands (including the final full-stop) were silently dropped, and
+     * guidance degraded with the number of agents. A spinning thread consumes
+     * every message on arrival; Update() then reads the freshest command.
+     */
+    rclcpp::executors::SingleThreadedExecutor::SharedPtr m_ros_executor;
+    std::shared_ptr<std::thread> m_ros_node_thread;
+
+    /**
+     * @brief Latest command per entity received by the spin thread, drained
+     * into m_vessels_cmd_map_ptr at the top of Update(). This keeps the shared
+     * command map single-threaded (mutated on the main thread, read by the
+     * per-vessel async updates after), exactly as before.
+     */
+    std::mutex m_pending_cmds_mutex;
+    std::unordered_map<gz::sim::Entity, std::string> m_pending_cmds;
 
     /**
      * @brief Shared map of vessel entity to command string
