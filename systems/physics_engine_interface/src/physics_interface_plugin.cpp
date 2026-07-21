@@ -48,10 +48,13 @@ void PhysicsInterfacePlugin::Configure(
         m_world_name + "_physics_interface_plugin.txt");
 
     m_ros_node = rclcpp::Node::make_shared("physics_plugin", m_world_name);
+    // One subscription receives from N per-agent publishers; it is drained by the
+    // dedicated spin thread and staged into m_pending_cmds. Depth 100 (vs the
+    // previous 10) buffers more messages if the spin thread is delayed for a step.
     m_cmd_array_sub = m_ros_node->create_subscription<
         lotusim_msgs::msg::VesselCmdArray>(
         "vessel_cmd_array",
-        10,
+        100,
         [this](lotusim_msgs::msg::VesselCmdArray::ConstSharedPtr msgs) -> void {
             // Runs on the dedicated spin thread: resolve the entity under the
             // mapping lock and stage the command; Update() drains the staged
