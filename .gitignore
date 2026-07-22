@@ -1,6 +1,16 @@
-.vscode
+# VSCode
+.vscode/
+
 .config
 docs/doxygen
 lotus_logs/*
 .ipynb_checkpoints
 *.rviz
+
+# Colcon build outputs
+build/
+install/
+log/
+
+.claude/
+/CLAUDE.md
