@@ -310,11 +310,13 @@ source_environment() {
     source "/opt/ros/$ROS_DISTRO/setup.bash"
     source "${LOTUSIM_WS}/install/setup.bash"
 
+    export GZ_CONFIG_PATH="/usr/share/gz:${GZ_CONFIG_PATH}"
     export GZ_SIM_SYSTEM_PLUGIN_PATH="${LOTUSIM_WS}/install/lib"
     export GZ_GUI_PLUGIN_PATH="${LOTUSIM_WS}/install/lib"
     export GZ_SIM_RESOURCE_PATH="${MODEL_PATH}"
     export LOTUSIM_SPDLOG_LEVEL="${LOTUSIM_SPDLOG_LEVEL}"
 
+    echo -e "${GREEN}GZ_CONFIG_PATH${NC}: $GZ_CONFIG_PATH"
     echo -e "${GREEN}GZ_SIM_SYSTEM_PLUGIN_PATH${NC}: $GZ_SIM_SYSTEM_PLUGIN_PATH"
     echo -e "${GREEN}GZ_SIM_RESOURCE_PATH${NC}: $GZ_SIM_RESOURCE_PATH"
     echo -e "${YELLOW}LOTUSIM_SPDLOG_LEVEL${NC}: $LOTUSIM_SPDLOG_LEVEL"
@@ -374,7 +376,17 @@ run_command() {
         local world_file="${WORLD:-$DEFAULT_WORLD}"
 
         echo -e "${GREEN}Running the simulation world${NC}: ${WORLD_PATH}/${world_file}"
-        gz sim ${DEBUG} ${GUI} -r "${WORLD_PATH}/${world_file}"
+        # Server-only mode (-s, the default) needs --headless-rendering or
+        # gz-sim's Sensors system never initializes a render context, silently
+        # disabling ALL its sensors (IMU/magnetometer/air_pressure/navsat too,
+        # not just cameras) — every LOTUSim scenario before PX4 support routed
+        # camera data through the Unity render_plugin instead, so this never
+        # bit until a world (aerialPx4World) relied on gz-sim's own sensors.
+        local headless_rendering=""
+        if [ "${GUI}" = "-s" ]; then
+            headless_rendering="--headless-rendering"
+        fi
+        gz sim ${DEBUG} ${GUI} ${headless_rendering} -r "${WORLD_PATH}/${world_file}"
         ;;
     ui)
         clear
