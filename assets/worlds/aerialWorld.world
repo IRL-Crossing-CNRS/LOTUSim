@@ -64,8 +64,11 @@
     <plugin filename="entity_manager_plugin" name="lotusim::gazebo::EntityManager" />
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster" />
 
-    <!-- Wind Plugin -->
-    <plugin filename="gz-sim-wind-effects-system" name="gz::sim::systems::WindEffects">
+    <!-- Wind Regions Plugin (replaces stock WindEffects: supports per-region
+         wind on top of the ambient/global vector, and subscribes to ROS
+         directly instead of via a gz-transport bridge) -->
+    <plugin filename="wind_regions_plugin" name="lotusim::gazebo::WindRegionsPlugin">
+      <scaling_factor>1.0</scaling_factor>
     </plugin>
   </world>
 </sdf>
