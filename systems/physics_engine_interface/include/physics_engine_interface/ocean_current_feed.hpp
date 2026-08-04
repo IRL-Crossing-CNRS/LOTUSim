@@ -10,7 +10,7 @@
 #ifndef LOTUSIM_OCEAN_CURRENT_FEED_HH_
 #define LOTUSIM_OCEAN_CURRENT_FEED_HH_
 
-#include <geometry_msgs/msg/vector3.hpp>
+#include <lotusim_msgs/msg/ocean_current.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace lotusim::gazebo {
@@ -29,18 +29,22 @@ namespace lotusim::gazebo {
  * demo feature can simply not construct one (or drop this file from the
  * build) without touching any of the shared plugin code.
  *
- * Subscribes once to `<node namespace>/ocean_current`
- * (geometry_msgs/Vector3, world-frame ENU m/s, TRANSIENT_LOCAL so a single
- * latched publish from the scenario runner is delivered regardless of
- * subscribe/publish ordering) and forwards every message straight into
- * KinematicInterface::setCurrent().
+ * Subscribes to `<node namespace>/ocean_current` (lotusim_msgs/OceanCurrent,
+ * world-frame ENU m/s, TRANSIENT_LOCAL so the OceanCurrent SDK agent's
+ * latched publishes are delivered regardless of subscribe/publish ordering)
+ * and forwards every message into KinematicInterface::setCurrent(). The
+ * ``enable_current`` flag is how the agent signals shutdown: it publishes a
+ * default-constructed (disabled, zero-vector) message from its
+ * ``destroy_node()``, which this feed treats as "reset to no current"
+ * instead of a genuine (0, 0) current value. ``linear_velocity.z`` is read
+ * but unused: KinematicInterface's pose integration is 2D (x/y + yaw) only.
  */
 class OceanCurrentFeed {
 public:
     explicit OceanCurrentFeed(const rclcpp::Node::SharedPtr& node);
 
 private:
-    rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr m_sub;
+    rclcpp::Subscription<lotusim_msgs::msg::OceanCurrent>::SharedPtr m_sub;
 };
 
 }  // namespace lotusim::gazebo

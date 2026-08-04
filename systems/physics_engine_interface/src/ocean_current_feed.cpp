@@ -15,11 +15,13 @@ namespace lotusim::gazebo {
 
 OceanCurrentFeed::OceanCurrentFeed(const rclcpp::Node::SharedPtr& node)
 {
-    m_sub = node->create_subscription<geometry_msgs::msg::Vector3>(
+    m_sub = node->create_subscription<lotusim_msgs::msg::OceanCurrent>(
         "ocean_current",
         rclcpp::QoS(1).transient_local(),
-        [](geometry_msgs::msg::Vector3::ConstSharedPtr msg) -> void {
-            KinematicInterface::getInstance()->setCurrent(msg->x, msg->y);
+        [](lotusim_msgs::msg::OceanCurrent::ConstSharedPtr msg) -> void {
+            const auto& v = msg->linear_velocity;
+            KinematicInterface::getInstance()->setCurrent(
+                msg->enable_current ? v.x : 0.0, msg->enable_current ? v.y : 0.0);
         });
 }
 

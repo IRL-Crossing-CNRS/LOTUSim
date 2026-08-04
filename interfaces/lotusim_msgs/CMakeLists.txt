@@ -20,6 +20,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/WindRegionConeSegment.msg"
   "msg/WindRegion.msg"
   "msg/WindRegionArray.msg"
+  "msg/OceanCurrent.msg"
   "msg/SimStats.msg"
   "msg/WaypointFollowerStatus.msg"
   "msg/WindTurbineState.msg"
