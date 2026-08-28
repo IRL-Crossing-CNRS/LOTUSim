@@ -35,16 +35,21 @@ namespace lotusim::gazebo {
  * `/<world>/vessel_cmd_array`. The shared command map (filled by
  * PhysicsInterfacePlugin) carries, per entity, a JSON string:
  * ```json
- * { "u": <forward speed m/s>, "w": <yaw rate rad/s> }
+ * { "u": <forward speed m/s>, "w": <yaw rate rad/s>, "vz": <vertical rate m/s> }
  * ```
+ * `vz` is optional (defaults to 0) -- most marine Kinematic vehicles never
+ * set it. It exists for domains with real vertical motion, e.g. an aerial
+ * vehicle in Kinematic mode.
  *
- * The motion model mirrors the legacy WaypointFollowerPlugin integration:
+ * The motion model mirrors the legacy WaypointFollowerPlugin integration,
+ * plus a world-frame vertical rate:
  * ```
  * x   += u * cos(yaw) * dt
  * y   += u * sin(yaw) * dt
+ * z   += vz * dt
  * yaw += w * dt
  * ```
- * Only x, y and yaw are updated; z, roll and pitch are preserved (2D motion).
+ * Roll and pitch are preserved (no attitude dynamics).
  *
  * ### Example configuration
  * ```xml

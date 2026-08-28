@@ -86,8 +86,9 @@ KinematicInterface::getNewState(
 
     // Body-frame velocity command set by the remote guidance node, defaulting
     // to a full stop when no command has been received yet.
-    double u = 0.0;  // forward speed (m/s)
-    double w = 0.0;  // yaw rate (rad/s)
+    double u = 0.0;   // forward speed (m/s)
+    double w = 0.0;   // yaw rate (rad/s)
+    double vz = 0.0;  // world-frame vertical rate (m/s), e.g. for aerial vehicles
     if (m_vessels_cmd_map_ptr) {
         auto cmd_it = m_vessels_cmd_map_ptr->find(_entity);
         if (cmd_it != m_vessels_cmd_map_ptr->end() && !cmd_it->second.empty()) {
@@ -95,6 +96,7 @@ KinematicInterface::getNewState(
                 json cmd = json::parse(cmd_it->second);
                 u = cmd.value("u", 0.0);
                 w = cmd.value("w", 0.0);
+                vz = cmd.value("vz", 0.0);
             } catch (const std::exception& e) {
                 if (m_logger) {
                     m_logger->warn(
@@ -124,11 +126,12 @@ KinematicInterface::getNewState(
     gz::math::Pose3d pose = previous_state.pose;
     pose.SetX(pose.X() + (u * std::cos(yaw) + cx) * dt_s);
     pose.SetY(pose.Y() + (u * std::sin(yaw) + cy) * dt_s);
+    pose.SetZ(pose.Z() + vz * dt_s);
     pose.Rot().SetFromEuler(pose.Roll(), pose.Pitch(), yaw + w * dt_s);
     new_state.pose = pose;
 
     // World-frame velocities for the velocity components written to the ECM.
-    new_state.lin_vel.Set(u * std::cos(yaw) + cx, u * std::sin(yaw) + cy, 0.0);
+    new_state.lin_vel.Set(u * std::cos(yaw) + cx, u * std::sin(yaw) + cy, vz);
     new_state.ang_vel.Set(0.0, 0.0, w);
 
     logEngineState(new_state, domain);
