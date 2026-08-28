@@ -11,14 +11,23 @@
 
 namespace lotusim::gazebo {
 
+// An attitude maps BODY vectors to WORLD vectors, so a change of convention
+// takes the world basis change on the left and the body one on the right:
+//
+//     R_enu_flu = M_world(NED->ENU) . R_ned_frd . M_body(FRD->FLU)^-1
+//
+// Conjugating by q_ned_to_enu alone would apply the world map to the body
+// side too, putting xdyn's body x (forward) on Gazebo body y and publishing a
+// yaw 90 deg off the x-forward convention KinematicInterface uses.
+// lotusim_sdk/control/frames.py inverts this and must match.
 gz::math::Quaterniond quatNedToEnu(const gz::math::Quaterniond& q_ned)
 {
-    return q_ned_to_enu * q_ned * q_ned_to_enu.Inverse();
+    return q_ned_to_enu * q_ned * q_frd_to_flu.Inverse();
 }
 
 gz::math::Quaterniond quatEnuToNed(const gz::math::Quaterniond& q_enu)
 {
-    return q_ned_to_enu.Inverse() * q_enu * q_ned_to_enu;
+    return q_ned_to_enu.Inverse() * q_enu * q_frd_to_flu;
 }
 
 gz::math::Vector3d vecNedToEnu(const gz::math::Vector3d& v_ned)

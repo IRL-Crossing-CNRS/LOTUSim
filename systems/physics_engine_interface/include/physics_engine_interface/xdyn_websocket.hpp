@@ -32,8 +32,14 @@ using hdl = websocketpp::connection_hdl;
 using Client = websocketpp::client<websocketpp::config::asio_client>;
 using json = nlohmann::json;
 
+/// WORLD basis change, NED -> ENU: 180 deg about (1,1,0)/sqrt(2). (w, x, y, z).
 static const gz::math::Quaterniond
     q_ned_to_enu(0.0, 0.70710678118, 0.70710678118, 0.0);
+
+/// BODY basis change, xdyn FRD (x fwd, y starboard, z down) -> Gazebo FLU
+/// (x fwd, y port, z up): 180 deg about body X. Distinct from q_ned_to_enu;
+/// see quatNedToEnu.
+static const gz::math::Quaterniond q_frd_to_flu(0.0, 1.0, 0.0, 0.0);
 
 gz::math::Quaterniond quatNedToEnu(const gz::math::Quaterniond& q_ned);
 gz::math::Quaterniond quatEnuToNed(const gz::math::Quaterniond& q_enu);
