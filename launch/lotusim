@@ -311,8 +311,8 @@ source_environment() {
     source "${LOTUSIM_WS}/install/setup.bash"
 
     export GZ_CONFIG_PATH="/usr/share/gz:${GZ_CONFIG_PATH}"
-    export GZ_SIM_SYSTEM_PLUGIN_PATH="${LOTUSIM_WS}/install/lib"
-    export GZ_GUI_PLUGIN_PATH="${LOTUSIM_WS}/install/lib"
+    export GZ_SIM_SYSTEM_PLUGIN_PATH="${LD_LIBRARY_PATH}"
+    export GZ_GUI_PLUGIN_PATH="${LD_LIBRARY_PATH}"
     export GZ_SIM_RESOURCE_PATH="${MODEL_PATH}"
     export LOTUSIM_SPDLOG_LEVEL="${LOTUSIM_SPDLOG_LEVEL}"
 
