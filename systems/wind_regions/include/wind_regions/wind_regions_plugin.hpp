@@ -95,9 +95,9 @@ private:
     /**
      * @brief One region's geometry, abstracted behind a single virtual
      * Contains() so callers (RegionState, ResolveWind) never branch on which
-     * shape a region actually is — adding a new shape later means adding a
-     * new subclass and one line in MakeShape(), not touching every call site
-     * that used to if/else over a shape-type enum.
+     * shape a region actually is. Adding a new shape means adding a new
+     * subclass and one line in MakeShape(), rather than a shape-type branch at
+     * every call site.
      */
     class RegionShape {
     public:

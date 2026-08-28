@@ -283,13 +283,12 @@ private:
     /**
      * @brief Dedicated executor + thread servicing m_ros_node.
      *
-     * Commands used to be consumed with rclcpp::spin_some() once per Update.
-     * spin_some takes at most ONE message per subscription per call, so with a
-     * 0.1 s physics step the host consumed at most 10 commands/s while N
-     * remote agents publish N*20/s: the depth-10 queue overflowed, most
-     * commands (including the final full-stop) were silently dropped, and
-     * guidance degraded with the number of agents. A spinning thread consumes
-     * every message on arrival; Update() then reads the freshest command.
+     * rclcpp::spin_some() once per Update is not enough: it takes at most ONE
+     * message per subscription per call, so with a 0.1 s physics step the host
+     * would consume at most 10 commands/s while N remote agents publish
+     * N*20/s, overflowing the depth-10 queue and silently dropping commands
+     * (including a final full-stop). A spinning thread consumes every message
+     * on arrival; Update() then reads the freshest command.
      */
     rclcpp::executors::SingleThreadedExecutor::SharedPtr m_ros_executor;
     std::shared_ptr<std::thread> m_ros_node_thread;

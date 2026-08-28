@@ -4,9 +4,9 @@
   <version>0.0.1</version>
   <description>Gazebo system plugin applying per-region (and ambient) wind forces to wind-enabled links</description>
 
-  <maintainer email="loris.cazaux@gmail.com">loris</maintainer>
+  <maintainer email="loris.cazaux@gmail.com">Loris Cazaux</maintainer>
 
-  <author email="loris.cazaux@gmail.com">loris</author>
+  <author email="loris.cazaux@gmail.com">Loris Cazaux</author>
 
   <license>EPL-2.0</license>
 

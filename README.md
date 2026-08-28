@@ -12,6 +12,18 @@ If you are interested in partnership or have questions regarding contributing to
 
 Upcoming open-source publication under [EPL-2.0](LICENSE).
 
+## Where to start
+
+This repository is the **core**: the Gazebo system plugins, the bridge to the
+xdyn hydrodynamic solver, the ROS 2 message definitions, the vehicle models
+and the worlds. It holds no mission logic and no scenario.
+
+| You want to | Go to |
+|---|---|
+| Run a simulation, write a scenario, fly or pilot a vehicle | The scenario workspace `LOTUSim-generic-scenario` and its `README.md` |
+| Change the simulator itself — a plugin, a message, a vehicle model, the physics bridge | [docs/DEVELOPER.md](docs/DEVELOPER.md) |
+| Know which frame is used where, and why a trajectory looks mirrored | [docs/coordinate_frames.md](docs/coordinate_frames.md) |
+
 ## Video
 A demonstrative video of LOTUSim is available on YouTube:
 

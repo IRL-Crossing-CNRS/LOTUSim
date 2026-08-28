@@ -28,7 +28,7 @@ The integration spans two repositories.
 Path:
 
 ```text
-/home/gechhai/lotusim_ws/src/LOTUSim
+$LOTUSIM_PATH
 ```
 
 Responsibilities:
@@ -45,7 +45,7 @@ Responsibilities:
 Path:
 
 ```text
-/home/gechhai/Documents/workspace/lotusim/LOTUSim-generic-scenario
+$LOTUSIM_SCENARIO_WS
 ```
 
 Responsibilities:

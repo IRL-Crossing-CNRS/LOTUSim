@@ -4,8 +4,8 @@
   <version>0.0.1</version>
   <description>Linear battery sensor for LOTUSim, managed by LotusimSensorPlugin</description>
 
-  <maintainer email="loris.cazaux@gmail.com">loris</maintainer>
-  <author email="loris.cazaux@gmail.com">loris</author>
+  <maintainer email="loris.cazaux@gmail.com">Loris Cazaux</maintainer>
+  <author email="loris.cazaux@gmail.com">Loris Cazaux</author>
 
   <license>EPL-2.0</license>
 

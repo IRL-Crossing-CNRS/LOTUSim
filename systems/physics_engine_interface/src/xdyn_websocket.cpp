@@ -328,11 +328,11 @@ bool XdynWebsocket::activateConnection(const gz::sim::Entity& _entity)
             websocketpp::lib::placeholders::_1,
             websocketpp::lib::placeholders::_2));
 
-        // Poll for the open handler instead of sleeping a flat 3 s per try. A
-        // local xdyn answers in a few milliseconds, and this call sits on
-        // Gazebo's Update thread: every domain transition used to freeze the
-        // whole simulation for 3 s, which is unusable for a vehicle that
-        // crosses the surface/underwater boundary during a mission.
+        // Poll for the open handler rather than sleeping a flat interval per
+        // try. A local xdyn answers in a few milliseconds, and this call sits
+        // on Gazebo's Update thread, so a blocking wait stalls the whole
+        // simulation at every domain transition - which a vehicle crossing the
+        // surface/underwater boundary does repeatedly during a mission.
         constexpr auto kPoll = std::chrono::milliseconds(10);
         constexpr auto kAttemptTimeout = std::chrono::seconds(3);
         for (int retry = 0; retry < 3; ++retry) {
@@ -550,9 +550,9 @@ XdynWebsocket::getNewState(
     }
 
     // The ECM reports velocities in the WORLD frame; xdyn's u,v,w and p,q,r are
-    // BODY frame. They used to be passed straight through, which only happens
-    // to be right for a vessel heading due north — any other heading fed the
-    // hydrodynamic model velocities along the wrong axes.
+    // BODY frame, so rotate into BODY here. Passing them through unrotated is
+    // only correct for a vessel heading due north; at any other heading the
+    // hydrodynamic model receives velocities along the wrong axes.
     //
     // A depth-resolved current (`environment models: - model: ekman current`)
     // is NOT applied here: it belongs to the vessel's own YAML, and injecting
@@ -570,9 +570,9 @@ XdynWebsocket::getNewState(
     data["Dt"] = dt_s;
     data["states"] = json::array();
     json previous_state_json = {
-        // Seconds, like Dt. This used to carry milliseconds, so any
-        // time-driven model (irregular waves, a time-indexed set-point) saw a
-        // clock running 1000x too fast.
+        // Seconds, like Dt. Time-driven models (irregular waves, a
+        // time-indexed set-point) read this clock directly, so the unit has to
+        // match Dt.
         {"t", previous_state.time},
         {"x", ned_position.X()},
         {"y", ned_position.Y()},

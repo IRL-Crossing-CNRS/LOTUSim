@@ -583,9 +583,8 @@ bool PhysicsInterfacePlugin::loadVessel(
             // possible state
             if (physics_sdf_ptr->HasElement("init_state")) {
                 // Unknown rather than uninitialised: an unrecognised
-                // <init_state> used to fall through to vesselTransition with
-                // an indeterminate value, so the vessel landed in whatever
-                // domain the stack garbage happened to name.
+                // <init_state> must reach vesselTransition with a defined
+                // value, so the vessel cannot land in an arbitrary domain.
                 DomainType init_domain = DomainType::Unknown;
                 auto domain_it = DomainTypeMap.find(
                     physics_sdf_ptr->Get<std::string>("init_state"));
