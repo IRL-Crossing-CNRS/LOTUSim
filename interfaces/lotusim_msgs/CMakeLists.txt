@@ -26,6 +26,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/WindTurbineState.msg"
   "msg/WindTurbineArray.msg"
   "msg/LCOEState.msg"
+  "msg/GuidanceSetpoint.msg"
   "action/MASCmdArray.action"
   "action/MASCmd.action"
   "srv/SetWaypoints.srv"

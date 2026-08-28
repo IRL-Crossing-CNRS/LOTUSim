@@ -379,9 +379,14 @@ std::shared_ptr<PhysicsInterfaceBase> PhysicsInterfacePlugin::createConnection(
             return nullptr;
         }
     }
+    // setLogger BEFORE createConnection: the latter logs on every failure path
+    // it has (missing <uri>, malformed <initial_commands>, a model declaring
+    // no commands at all), and m_logger is a null shared_ptr until set — so
+    // installing it afterwards turned any of those diagnostics into a segfault
+    // inside Gazebo's update loop instead of the message it was meant to print.
     client->setSharedCmd(m_vessels_cmd_map_ptr);
-    client->createConnection(entity, name, sdf);
     client->setLogger(m_logger);
+    client->createConnection(entity, name, sdf);
     return client;
 }
 
@@ -445,7 +450,20 @@ bool PhysicsInterfacePlugin::vesselTransition(
     }
 
     std::unique_lock<std::shared_mutex> lock(m_mutex);
+    // Only tear the previous interface down when it is a DIFFERENT object from
+    // the one just activated.
+    //
+    // XdynWebsocket is a singleton: the surface and underwater interfaces of an
+    // xdyn vessel are the same instance, and its connections are keyed by
+    // entity alone, not by (entity, domain). So for a vessel crossing
+    // <surface_depth>, activateConnection() above correctly saw the connection
+    // already open and reused it — and deactivating "the previous interface"
+    // here would close that same connection, leaving the vessel with none. It
+    // then failed every subsequent step ("no live connection for entity N"),
+    // which is what happened to every vessel spawned deeper than the threshold
+    // while the shallow one, never transitioning, kept working.
     if (m_vehicle_current_mode.find(_vessel) != m_vehicle_current_mode.end() &&
+        m_current_vessel_interface[_vessel] != new_interface &&
         !m_current_vessel_interface[_vessel]->deactivateConnection(_vessel)) {
         m_logger->warn(
             "PhysicsInterfacePlugin::vesselTransition: Vessel {} unable to deactivate previous physics interface. Ignoring.",
@@ -564,7 +582,11 @@ bool PhysicsInterfacePlugin::loadVessel(
             // Add warning that the init is not found and find the
             // possible state
             if (physics_sdf_ptr->HasElement("init_state")) {
-                DomainType init_domain;
+                // Unknown rather than uninitialised: an unrecognised
+                // <init_state> used to fall through to vesselTransition with
+                // an indeterminate value, so the vessel landed in whatever
+                // domain the stack garbage happened to name.
+                DomainType init_domain = DomainType::Unknown;
                 auto domain_it = DomainTypeMap.find(
                     physics_sdf_ptr->Get<std::string>("init_state"));
                 if (domain_it != DomainTypeMap.end()) {

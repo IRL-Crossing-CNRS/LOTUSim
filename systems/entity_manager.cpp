@@ -599,6 +599,34 @@ void EntityManager::publishPose(
         msg.geo_point.longitude = latLonEle.value().Y();
         msg.geo_point.altitude = latLonEle.value().Z();
 
+        // World-frame (ENU) velocity of the base link, when it is available.
+        // A remote control loop closing on this topic would otherwise have to
+        // differentiate the position — noisy, and one sample late. The values
+        // only exist on links whose velocity checks were enabled, which the
+        // physics interface does at spawn for every vessel it drives.
+        msg.has_twist = false;
+        for (auto &&link : _ecm.ChildrenByComponents(
+                 entity,
+                 gz::sim::components::Link())) {
+            auto name = _ecm.Component<gz::sim::components::Name>(link);
+            if (!name || name->Data().find("base_link") == std::string::npos) {
+                continue;
+            }
+            gz::sim::Link base_link(link);
+            auto lin = base_link.WorldLinearVelocity(_ecm);
+            auto ang = base_link.WorldAngularVelocity(_ecm);
+            if (lin && ang) {
+                msg.twist.linear.x = lin->X();
+                msg.twist.linear.y = lin->Y();
+                msg.twist.linear.z = lin->Z();
+                msg.twist.angular.x = ang->X();
+                msg.twist.angular.y = ang->Y();
+                msg.twist.angular.z = ang->Z();
+                msg.has_twist = true;
+            }
+            break;
+        }
+
         array_msg.vessels.push_back(msg);
     }
     m_pose_pub->publish(array_msg);
