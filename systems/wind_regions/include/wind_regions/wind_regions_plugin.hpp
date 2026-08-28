@@ -102,7 +102,7 @@ private:
     class RegionShape {
     public:
         virtual ~RegionShape() = default;
-        virtual bool Contains(double _x, double _y) const = 0;
+        virtual bool Contains(double _x, double _y, double _z) const = 0;
     };
 
     class BoxShape : public RegionShape {
@@ -112,7 +112,11 @@ private:
         {
         }
 
-        bool Contains(double _x, double _y) const override
+        /// Boxes are altitude-independent: a vertical column spanning all
+        /// heights, which is the convention WindRegionBox documents and what
+        /// ground-level gust patches rely on. Only cone segments have
+        /// vertical extent.
+        bool Contains(double _x, double _y, double) const override
         {
             return _x >= m_x1 && _x <= m_x2 && _y >= m_y1 && _y <= m_y2;
         }
@@ -125,11 +129,24 @@ private:
      * @brief A tapered frustum: point-in-shape is an axis projection (is it
      * within [0, length] downstream of origin?) plus a radial bound that
      * grows linearly from r_start to r_end over that span.
+     *
+     * The radial bound is measured in the full plane perpendicular to the
+     * axis, vertical offset included. The segment is therefore a horizontal
+     * tube centred on the rotor hub, extending roughly one rotor radius above
+     * and below the hub near the disk and widening downstream.
+     *
+     * Measuring the radius laterally only, with origin.z unused, made each
+     * region unbounded in altitude: a link far above the blade tips or below
+     * the turbine tested as inside the wake and received the full
+     * rotor-height deficit.
+     *
+     * The axis remains horizontal (wind direction); the radius carries the
+     * vertical extent.
      */
     class ConeSegmentShape : public RegionShape {
     public:
         ConeSegmentShape(
-            const gz::math::Vector2d& _origin,
+            const gz::math::Vector3d& _origin,
             const gz::math::Vector2d& _axis,
             double _length,
             double _rStart,
@@ -139,21 +156,24 @@ private:
         {
         }
 
-        bool Contains(double _x, double _y) const override
+        bool Contains(double _x, double _y, double _z) const override
         {
             double dx = _x - m_origin.X();
             double dy = _y - m_origin.Y();
+            double dz = _z - m_origin.Z();
             double d = dx * m_axis.X() + dy * m_axis.Y();
             if (d < 0.0 || d > m_length) {
                 return false;
             }
             double lateral = dx * -m_axis.Y() + dy * m_axis.X();
             double r = m_rStart + (m_rEnd - m_rStart) * (d / m_length);
-            return std::abs(lateral) <= r;
+            // Radial distance from the (horizontal) axis line, so the bound
+            // applies equally to sideways and vertical offset.
+            return (lateral * lateral + dz * dz) <= r * r;
         }
 
     private:
-        gz::math::Vector2d m_origin;
+        gz::math::Vector3d m_origin;
         gz::math::Vector2d m_axis;
         double m_length, m_rStart, m_rEnd;
     };
@@ -177,9 +197,9 @@ private:
         gz::math::Vector3d velocity = gz::math::Vector3d::Zero;
         bool enable_wind = false;
 
-        bool Contains(double _x, double _y) const
+        bool Contains(double _x, double _y, double _z) const
         {
-            return shape && shape->Contains(_x, _y);
+            return shape && shape->Contains(_x, _y, _z);
         }
     };
 
@@ -194,6 +214,7 @@ private:
     static bool ResolveWind(
         double _x,
         double _y,
+        double _z,
         const std::vector<RegionState>& _regions,
         const gz::math::Vector3d& _globalWind,
         bool _globalEnableWind,

@@ -131,7 +131,8 @@ std::shared_ptr<const WindRegionsPlugin::RegionShape> WindRegionsPlugin::MakeSha
 {
     if (_region.shape_type == lotusim_msgs::msg::WindRegion::CONE_SEGMENT) {
         return std::make_shared<ConeSegmentShape>(
-            gz::math::Vector2d(_region.cone.origin.x, _region.cone.origin.y),
+            gz::math::Vector3d(
+                _region.cone.origin.x, _region.cone.origin.y, _region.cone.origin.z),
             gz::math::Vector2d(_region.cone.axis.x, _region.cone.axis.y),
             _region.cone.length,
             _region.cone.r_start,
@@ -144,6 +145,7 @@ std::shared_ptr<const WindRegionsPlugin::RegionShape> WindRegionsPlugin::MakeSha
 bool WindRegionsPlugin::ResolveWind(
     double _x,
     double _y,
+    double _z,
     const std::vector<RegionState>& _regions,
     const gz::math::Vector3d& _globalWind,
     bool _globalEnableWind,
@@ -151,7 +153,7 @@ bool WindRegionsPlugin::ResolveWind(
 {
     // Last matching region in the list wins on overlap.
     for (auto it = _regions.rbegin(); it != _regions.rend(); ++it) {
-        if (it->Contains(_x, _y)) {
+        if (it->Contains(_x, _y, _z)) {
             if (!it->enable_wind) {
                 return false;
             }
@@ -227,6 +229,7 @@ void WindRegionsPlugin::Update(
             if (!ResolveWind(
                     pose->Pos().X(),
                     pose->Pos().Y(),
+                    pose->Pos().Z(),
                     regions_snapshot,
                     global_wind_snapshot,
                     global_enable_snapshot,
