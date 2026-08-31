@@ -80,6 +80,14 @@ jobs:
           cosign-release: 'v2.6.2'
 
       - name: Sign container image
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
+          # cosign reads ~/.docker/config.json, not skopeo's REGISTRY_AUTH_FILE.
+          printf '%s' "$REGISTRY_PASSWORD" | cosign login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+
           cosign sign --yes \
             ghcr.io/${{ steps.repo.outputs.repo }}@${{ steps.image.outputs.digest }}

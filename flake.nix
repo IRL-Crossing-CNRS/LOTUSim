@@ -294,12 +294,13 @@
             buildInputs = rosDeps ++ gazeboHarmonic ++ thirdParty;
             dontWrapQtApps = true;
           } ''
+          # LD_LIBRARY_PATH composes: nixGL exports its mesa into it before exec-ing this.
           makeWrapper ${ros.gz-tools-vendor}/bin/gz $out/bin/lotusim-env \
             --add-flags sim \
             --set GZ_CONFIG_PATH "$GZ_CONFIG_PATH" \
             --set PYTHONPATH "$PYTHONPATH" \
             --set AMENT_PREFIX_PATH "${workspace}:$AMENT_PREFIX_PATH" \
-            --set LD_LIBRARY_PATH "${workspace}/lib:$LD_LIBRARY_PATH" \
+            --prefix LD_LIBRARY_PATH : "${workspace}/lib:$LD_LIBRARY_PATH" \
             --set GZ_SIM_SYSTEM_PLUGIN_PATH "${workspace}/lib" \
             --set FASTDDS_BUILTIN_TRANSPORTS UDPv4
         '';
