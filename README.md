@@ -6,7 +6,11 @@ LOTUSim is a real-time, multi-domain simulation platform for maritime operations
 
 ## Quickstart
 
-Any Linux/macOS with [Nix](https://nixos.org/download/) works.
+You need to have Nix setup on your machine (compatible with Linux/macOS). You can install it via this command:
+```sh
+curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh -s -- --daemon
+```
+For more options, check their official website: [Nix](https://nixos.org/download/). 
 
 #### 1. Add the ROS cache
 
