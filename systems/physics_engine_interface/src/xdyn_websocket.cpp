@@ -51,6 +51,7 @@ std::unordered_map<gz::sim::Entity, std::string> XdynWebsocket::m_status;
 std::unordered_map<gz::sim::Entity, std::mutex> XdynWebsocket::m_msg_mutex;
 std::unordered_map<gz::sim::Entity, std::condition_variable>
     XdynWebsocket::m_msg_cv;
+std::unordered_map<gz::sim::Entity, bool> XdynWebsocket::m_msg_ready;
 std::unordered_map<gz::sim::Entity, VesselInformation>
     XdynWebsocket::m_saved_state;
 std::unordered_map<gz::sim::Entity, DomainType> XdynWebsocket::m_current_domain;
@@ -116,6 +117,16 @@ bool XdynWebsocket::configureInterface(
         return false;
     }
     m_uri[_entity][domain_type] = uri;
+
+    // Pre-create every per-entity slot send() and onMessage() touch, while we
+    // are still on the single-threaded load path. Those two run concurrently
+    // once a scenario carries more than one xdyn model, and reaching a missing
+    // key through operator[] inserts it, which can rehash the map under the
+    // other threads walking it.
+    m_msg_mutex[_entity];
+    m_msg_cv[_entity];
+    m_msg_ready[_entity] = false;
+    m_saved_state[_entity] = VesselInformation{};
 
     if (_sdf->HasElement("thrusters") && m_models_cmd_map_ptr) {
         auto sdfPtr_thruster = _sdf->GetElement("thrusters")->GetFirstElement();
@@ -307,7 +318,18 @@ void XdynWebsocket::onMessage(
 {
     gz::sim::Entity entity =
         m_connection_entity_mapping[m_client.get_con_from_hdl(hdl)];
-    std::unique_lock<std::mutex> lock(m_msg_mutex[entity]);
+
+    auto mutex_it = m_msg_mutex.find(entity);
+    auto ready_it = m_msg_ready.find(entity);
+    auto cv_it = m_msg_cv.find(entity);
+    if (mutex_it == m_msg_mutex.end() || ready_it == m_msg_ready.end() ||
+        cv_it == m_msg_cv.end()) {
+        m_logger->error(
+            "XdynWebsocket::onMessage: no message slots for entity {}.",
+            entity);
+        return;
+    }
+    std::unique_lock<std::mutex> lock(mutex_it->second);
     json reply = json::parse(msg->get_payload());
 
     auto ned_position = gz::math::Vector3d(
@@ -345,7 +367,8 @@ void XdynWebsocket::onMessage(
     new_state.ang_vel = gz_angular_vel;
 
     m_saved_state[entity] = std::move(new_state);
-    m_msg_cv[entity].notify_one();
+    ready_it->second = true;
+    cv_it->second.notify_one();
 }
 
 std::optional<std::tuple<VesselInformation, DomainType>>
@@ -406,36 +429,59 @@ bool XdynWebsocket::send(
     const gz::sim::Entity& _entity,
     const std::string& message)
 {
-    std::unique_lock<std::mutex> lock(m_variable_mutex);
-    // Guard to help with setup time
-    auto conn_ptr = m_connection_mapping[_entity];
-    if (!conn_ptr) {
-        m_logger->warn("Websocket connection not ready, skipping send.");
-        return false;
-    }
-    websocketpp::lib::error_code ec;
-    m_client.send(
-        conn_ptr->get_handle(),
-        message,
-        websocketpp::frame::opcode::text,
-        ec);
-    if (ec) {
+    // Look the per-entity slots up, never operator[]: this runs on one
+    // std::async thread per model, and inserting here would rehash the map
+    // under the others (see configureInterface, where they are pre-created).
+    auto mutex_it = m_msg_mutex.find(_entity);
+    auto ready_it = m_msg_ready.find(_entity);
+    auto cv_it = m_msg_cv.find(_entity);
+    if (mutex_it == m_msg_mutex.end() || ready_it == m_msg_ready.end() ||
+        cv_it == m_msg_cv.end()) {
         m_logger->error(
-            "XdynWebsocket::send: Error sending message: ",
-            ec.message());
+            "XdynWebsocket::send: no message slots for entity {}.",
+            _entity);
         return false;
     }
+
+    // Take the message lock BEFORE sending and clear the ready flag: a reply
+    // can come back on the websocket thread faster than we reach the wait, and
+    // a plain wait_for() then misses the notification and burns the full
+    // timeout. Holding the lock across the send makes onMessage queue up behind
+    // us until wait_for releases it.
+    std::unique_lock<std::mutex> msg_lock(mutex_it->second);
+    ready_it->second = false;
+
     {
-        std::unique_lock<std::mutex> lock(m_msg_mutex[_entity]);
-        if (m_msg_cv[_entity].wait_for(
-                lock,
-                std::chrono::seconds(DEFAULT_WEBSOCKET_TIMEOUT)) ==
-            std::cv_status::timeout) {
-            m_logger->warn("XdynWebsocket::send: websocket timed out.");
+        std::unique_lock<std::mutex> lock(m_variable_mutex);
+        // The connection is absent until activateInterface has succeeded, and
+        // is erased again on deactivate; operator[] hands back a default null
+        // pointer and dereferencing it segfaults.
+        auto con_it = m_connection_mapping.find(_entity);
+        if (con_it == m_connection_mapping.end() || !con_it->second) {
+            m_logger->warn("Websocket connection not ready, skipping send.");
             return false;
-        } else {
-            return true;
+        }
+        websocketpp::lib::error_code ec;
+        m_client.send(
+            con_it->second->get_handle(),
+            message,
+            websocketpp::frame::opcode::text,
+            ec);
+        if (ec) {
+            m_logger->error(
+                "XdynWebsocket::send: Error sending message: {}",
+                ec.message());
+            return false;
         }
     }
+
+    if (!cv_it->second.wait_for(
+            msg_lock,
+            std::chrono::seconds(DEFAULT_WEBSOCKET_TIMEOUT),
+            [&] { return ready_it->second; })) {
+        m_logger->warn("XdynWebsocket::send: websocket timed out.");
+        return false;
+    }
+    return true;
 }
 }  // namespace lotusim::gazebo
