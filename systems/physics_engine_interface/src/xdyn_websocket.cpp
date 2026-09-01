@@ -11,18 +11,20 @@
 
 namespace lotusim::gazebo {
 
-// Convert a quaternion from the NED frame to the ENU frame by conjugating it
-// with the basis-change quaternion that maps [N, E, D] coordinates to [E, N,
-// -D].
+// An attitude maps body vectors to world vectors, so a change of convention
+// takes the world basis change on the left and the body one on the right:
+// R_enu_flu = M_world(NED->ENU) . R_ned_frd . M_body(FRD->FLU)^-1.
+// Conjugating by q_ned_to_enu alone applies the world map to the body side
+// too, putting xdyn's body x (forward) on Gazebo's body y.
 gz::math::Quaterniond quatNedToEnu(const gz::math::Quaterniond& q_ned)
 {
-    return q_ned_to_enu * q_ned * q_ned_to_enu.Inverse();
+    return q_ned_to_enu * q_ned * q_frd_to_flu.Inverse();
 }
 
-// Convert a quaternion from the ENU frame back to the NED frame.
+// The inverse of quatNedToEnu; lotusim_sdk mirrors this on the Python side.
 gz::math::Quaterniond quatEnuToNed(const gz::math::Quaterniond& q_enu)
 {
-    return q_ned_to_enu.Inverse() * q_enu * q_ned_to_enu;
+    return q_ned_to_enu.Inverse() * q_enu * q_frd_to_flu;
 }
 
 gz::math::Vector3d vecNedToEnu(const gz::math::Vector3d& v_ned)
@@ -315,11 +317,13 @@ void XdynWebsocket::onMessage(
         reply["y"].back().get<double>(),
         reply["z"].back().get<double>());
 
+    // gz::math::Quaterniond takes (w, x, y, z); xdyn names its vector part
+    // (qi, qj, qk) = (x, y, z), so qj comes before qk.
     auto ned_quad = gz::math::Quaterniond(
         reply["qr"].back().get<double>(),
         reply["qi"].back().get<double>(),
-        reply["qk"].back().get<double>(),
-        reply["qj"].back().get<double>());
+        reply["qj"].back().get<double>(),
+        reply["qk"].back().get<double>());
 
     auto gz_position = vecNedToEnu(ned_position);
     auto gz_quad = quatNedToEnu(ned_quad);
@@ -334,8 +338,10 @@ void XdynWebsocket::onMessage(
         reply["q"].back().get<double>(),
         reply["r"].back().get<double>());
 
-    auto gz_lin_vel = vecNedToEnu(ned_lin_vel);
-    auto gz_angular_vel = vecNedToEnu(ned_angular_vel);
+    // xdyn reports u,v,w and p,q,r in the BODY frame, so rotate into the world
+    // frame before handing them to the ECM.
+    auto gz_lin_vel = vecNedToEnu(ned_quad.RotateVector(ned_lin_vel));
+    auto gz_angular_vel = vecNedToEnu(ned_quad.RotateVector(ned_angular_vel));
 
     VesselInformation new_state;
     new_state.time = reply["t"].back().get<double>();
@@ -356,14 +362,23 @@ XdynWebsocket::getNewState(
 {
     gz::math::Vector3d ned_position = vecEnuToNed(previous_state.pose.Pos());
     gz::math::Quaterniond ned_quad = quatEnuToNed(previous_state.pose.Rot());
-    gz::math::Vector3d ned_lin_vel = vecEnuToNed(previous_state.lin_vel);
-    gz::math::Vector3d ned_angular_vel = vecEnuToNed(previous_state.ang_vel);
+    // The ECM reports velocities in the WORLD frame; xdyn's u,v,w and p,q,r are
+    // BODY frame. Passing them through unrotated is only correct for a vessel
+    // heading due north; at any other heading the hydrodynamic model receives
+    // velocities along the wrong axes.
+    gz::math::Vector3d ned_lin_vel =
+        ned_quad.RotateVectorReverse(vecEnuToNed(previous_state.lin_vel));
+    gz::math::Vector3d ned_angular_vel =
+        ned_quad.RotateVectorReverse(vecEnuToNed(previous_state.ang_vel));
 
     json data = json::object();
     data["Dt"] = time_diff / 1000.0;
     data["states"] = json::array();
     json previous_state_json = {
-        {"t", time_diff},
+        // Seconds, like Dt. time_diff is the step in milliseconds, not the
+        // state's clock: time-driven models (irregular waves, a time-indexed
+        // set-point) read this field directly and need the same unit as Dt.
+        {"t", previous_state.time},
         {"x", ned_position.X()},
         {"y", ned_position.Y()},
         {"z", ned_position.Z()},
