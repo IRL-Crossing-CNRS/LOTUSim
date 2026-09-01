@@ -7,9 +7,9 @@
     Custom sensors have been added and gazebo sensors have been altered to pub in ros
   </description>
 
-  <maintainer email="malcom.neo@fe.naval-group.com">malcom</maintainer>
+  <maintainer email="malcom.neo@fe.naval-group.com">Malcom Neo</maintainer>
 
-  <author email="malcom.neo@fe.naval-group.com">malcom</author>
+  <author email="malcom.neo@fe.naval-group.com">Malcom Neo</author>
 
   <license>EPL-2.0</license>
 
@@ -20,6 +20,7 @@
   <depend>ais_sensor</depend>
   <depend>imu_sensor</depend>
   <depend>radar_sensor</depend>
+  <depend>battery_sensor</depend>
   <export>
     <build_type>ament_cmake</build_type>
   </export>

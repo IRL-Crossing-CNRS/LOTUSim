@@ -14,14 +14,12 @@ namespace lotusim::gazebo {
 // An attitude maps body vectors to world vectors, so a change of convention
 // takes the world basis change on the left and the body one on the right:
 // R_enu_flu = M_world(NED->ENU) . R_ned_frd . M_body(FRD->FLU)^-1.
-// Conjugating by q_ned_to_enu alone applies the world map to the body side
-// too, putting xdyn's body x (forward) on Gazebo's body y.
+// lotusim_sdk/control/frames.py inverts this and must match.
 gz::math::Quaterniond quatNedToEnu(const gz::math::Quaterniond& q_ned)
 {
     return q_ned_to_enu * q_ned * q_frd_to_flu.Inverse();
 }
 
-// The inverse of quatNedToEnu; lotusim_sdk mirrors this on the Python side.
 gz::math::Quaterniond quatEnuToNed(const gz::math::Quaterniond& q_enu)
 {
     return q_ned_to_enu.Inverse() * q_enu * q_frd_to_flu;
@@ -57,6 +55,12 @@ std::unordered_map<gz::sim::Entity, bool> XdynWebsocket::m_msg_ready;
 std::unordered_map<gz::sim::Entity, VesselInformation>
     XdynWebsocket::m_saved_state;
 std::unordered_map<gz::sim::Entity, DomainType> XdynWebsocket::m_current_domain;
+std::unordered_map<gz::sim::Entity, double> XdynWebsocket::m_surface_depth;
+std::unordered_map<gz::sim::Entity, std::shared_ptr<GaussMarkovCurrent>>
+    XdynWebsocket::m_gauss_markov_current;
+std::unordered_map<gz::sim::Entity, std::shared_ptr<CopernicusCurrent>>
+    XdynWebsocket::m_copernicus_current;
+
 
 XdynWebsocket::XdynWebsocket() : PhysicsInterfaceBase("XdynWebsocket")
 {
@@ -120,21 +124,123 @@ bool XdynWebsocket::configureInterface(
     }
     m_uri[_entity][domain_type] = uri;
 
-    // Pre-create every per-entity slot send() and onMessage() touch, while we
-    // are still on the single-threaded load path. Those two run concurrently
-    // once a scenario carries more than one xdyn model, and reaching a missing
-    // key through operator[] inserts it, which can rehash the map under the
-    // other threads walking it.
+    // Surface/Underwater threshold: a vehicle property, not a universal one.
+    m_surface_depth[_entity] = _sdf->HasElement("surface_depth")
+        ? _sdf->Get<double>("surface_depth")
+        : DEFAULT_SURFACE_DEPTH;
+
+    // Optional Gauss-Markov current, injected on the caller side (see
+    // gauss_markov_current.hpp) -- absent by default, since xdyn vessels
+    // normally take their current from their own YAML environment model.
+    if (_sdf->HasElement("gauss_markov_current")) {
+        auto gm_sdf = _sdf->GetElement("gauss_markov_current");
+        const double mean_x = gm_sdf->HasElement("mean_x")
+            ? gm_sdf->Get<double>("mean_x") : 0.0;
+        const double mean_y = gm_sdf->HasElement("mean_y")
+            ? gm_sdf->Get<double>("mean_y") : 0.0;
+        const double tau = gm_sdf->HasElement("tau")
+            ? gm_sdf->Get<double>("tau") : 60.0;
+        // Stationary standard deviation, not the driving-noise intensity:
+        // directly comparable to the mean, and its meaning does not shift
+        // when tau changes. See gauss_markov_current.hpp.
+        const double std_dev = gm_sdf->HasElement("std_dev")
+            ? gm_sdf->Get<double>("std_dev") : 0.0;
+        const unsigned int seed = gm_sdf->HasElement("seed")
+            ? gm_sdf->Get<unsigned int>("seed") : 0u;
+        if (gm_sdf->HasElement("sigma")) {
+            m_logger->warn(
+                "XdynWebsocket::createConnection: {} declares <sigma> in "
+                "<gauss_markov_current>, which is not a parameter of this model. "
+                "Use <std_dev>, the stationary standard deviation in m/s "
+                "(std_dev = sigma * sqrt(tau/2)). Ignoring <sigma>.",
+                _name);
+        }
+        m_gauss_markov_current[_entity] = std::make_shared<GaussMarkovCurrent>(
+            mean_x, mean_y, tau, std_dev, seed);
+    }
+
+    // Optional measured-current replay from a Copernicus depth profile (see
+    // copernicus_current.hpp), the same injection slot as the Gauss-Markov
+    // current above and equally absent by default. Declaring both would mean
+    // two currents fighting over one slot, so that is refused rather than
+    // silently resolved one way or the other.
+    if (_sdf->HasElement("copernicus_current")) {
+        auto cop_sdf = _sdf->GetElement("copernicus_current");
+        if (m_gauss_markov_current.count(_entity)) {
+            m_logger->error(
+                "XdynWebsocket::createConnection: {} declares both "
+                "<gauss_markov_current> and <copernicus_current>. They are "
+                "alternative sources for the same injected current, not "
+                "additive. Ignoring <copernicus_current>.",
+                _name);
+        } else if (!cop_sdf->HasElement("profile")) {
+            m_logger->error(
+                "XdynWebsocket::createConnection: {} declares "
+                "<copernicus_current> without a <profile> path. No measured "
+                "current will be applied.",
+                _name);
+        } else {
+            const std::string profile = cop_sdf->Get<std::string>("profile");
+            try {
+                auto cur = std::make_shared<CopernicusCurrent>(profile);
+                m_logger->info(
+                    "XdynWebsocket::createConnection: {} replaying measured "
+                    "current from '{}' ({} depth level(s)).",
+                    _name, profile, cur->levels());
+                m_copernicus_current[_entity] = std::move(cur);
+            } catch (const std::exception& e) {
+                // Loud, and with no current installed: a run that silently
+                // fell back to zero current would be indistinguishable from
+                // the no-current control condition.
+                m_logger->error(
+                    "XdynWebsocket::createConnection: {} could not load "
+                    "<copernicus_current> profile: {}. NO current will be "
+                    "applied to this vessel.",
+                    _name, e.what());
+            }
+        }
+    }
+
+    // Pre-create every per-entity slot of the maps that send() and onMessage()
+    // touch, while we are still on the single-threaded load path. Those two run
+    // concurrently once the scenario has more than one xdyn model: Update fires
+    // one std::async per model, and the websocket delivers replies on its own
+    // thread. Reaching a missing key through operator[] INSERTS it, which can
+    // rehash the map under the other threads walking it. The concurrent paths
+    // must therefore use find(), never operator[].
     m_msg_mutex[_entity];
     m_msg_cv[_entity];
     m_msg_ready[_entity] = false;
     m_saved_state[_entity] = VesselInformation{};
 
-    // The emptiness check is not redundant: a model with no thruster still has
-    // the tag, just with no child, and the loop below dereferences that child
-    // before testing it.
-    if (m_models_cmd_map_ptr && _sdf->HasElement("thrusters") &&
+    // xdyn fails a whole step if any command declared by its force models is
+    // missing, so the first step must already carry every key. A model whose
+    // command is not a Wageningen propeller setting declares its own JSON.
+    if (m_models_cmd_map_ptr && _sdf->HasElement("initial_commands")) {
+        // Force-model agnostic: whatever JSON object the model needs, used
+        // verbatim. Required by anything that is not Wageningen B-series,
+        // e.g. `maneuvering` models whose command is a thrust in newtons.
+        const std::string raw = _sdf->Get<std::string>("initial_commands");
+        try {
+            auto parsed = json::parse(raw);
+            if (!parsed.is_object()) {
+                throw std::runtime_error("not a JSON object");
+            }
+            (*m_models_cmd_map_ptr)[_entity] = parsed.dump();
+        } catch (const std::exception& e) {
+            m_logger->error(
+                "XdynWebsocket::createConnection: {} has an invalid <initial_commands>: {}\n{}",
+                _name,
+                e.what(),
+                raw);
+            return false;
+        }
+    } else if (
+        m_models_cmd_map_ptr && _sdf->HasElement("thrusters") &&
         _sdf->GetElement("thrusters")->GetFirstElement()) {
+        // Wageningen B-series convention. The emptiness check above is not
+        // redundant: the SDK emits <thrusters> unconditionally, so a model with
+        // no thruster still has the tag, just with no child.
         auto sdfPtr_thruster = _sdf->GetElement("thrusters")->GetFirstElement();
         auto thrusters_cmd = json::object();
         while (sdfPtr_thruster != sdf::ElementPtr(nullptr)) {
@@ -146,6 +252,12 @@ bool XdynWebsocket::configureInterface(
             sdfPtr_thruster = sdfPtr_thruster->GetNextElement();
         }
         (*m_models_cmd_map_ptr)[_entity] = thrusters_cmd.dump();
+    } else if (m_models_cmd_map_ptr) {
+        m_logger->warn(
+            "XdynWebsocket::configureInterface: {} declares neither <thrusters> nor "
+            "<initial_commands>. Every step will fail until an agent publishes a "
+            "complete command set on the command topic.",
+            _name);
     }
     return true;
 }
@@ -225,22 +337,32 @@ bool XdynWebsocket::activateInterface(
             websocketpp::lib::placeholders::_1,
             websocketpp::lib::placeholders::_2));
 
-        int retry = 0;
-        while (m_status[_entity] != "opened" && retry < 3) {
+        // Poll for the open handler rather than sleeping a flat interval per
+        // try. A local xdyn answers in a few milliseconds, and this call sits
+        // on Gazebo's Update thread, so a blocking wait stalls the whole
+        // simulation at every domain transition.
+        constexpr auto kPoll = std::chrono::milliseconds(10);
+        constexpr auto kAttemptTimeout = std::chrono::seconds(3);
+        for (int retry = 0; retry < 3; ++retry) {
             m_logger->info(
                 "XdynWebsocket::activateInterface: Starting connection: {}",
                 m_name_mapping[_entity]);
             m_client.connect(con);
-            std::this_thread::sleep_for(std::chrono::seconds(3));
-            retry += 1;
+            const auto deadline =
+                std::chrono::steady_clock::now() + kAttemptTimeout;
+            while (m_status[_entity] != "opened" &&
+                   m_status[_entity] != "failed" &&
+                   std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(kPoll);
+            }
+            if (m_status[_entity] == "opened") {
+                return true;
+            }
         }
-        if (retry > 2) {
-            m_logger->error(
-                "XdynWebsocket::activateInterface: Called for vessel entity {} but unable to connect.",
-                _entity);
-            return false;
-        }
-        return true;
+        m_logger->error(
+            "XdynWebsocket::activateInterface: Called for vessel entity {} but unable to connect.",
+            _entity);
+        return false;
     } catch (const std::exception& e) {
         m_logger->error(
             "XdynWebsocket::activateInterface: Called for vessel entity {} but error\n{}.",
@@ -338,6 +460,17 @@ void XdynWebsocket::onMessage(
     std::unique_lock<std::mutex> lock(mutex_it->second);
     json reply = json::parse(msg->get_payload());
 
+    // xdyn reports a refused step as an "error" field instead of a state, which
+    // leaves m_saved_state on its previous value.
+    if (reply.contains("error")) {
+        m_logger->error(
+            "XdynWebsocket::onMessage: xdyn refused the step: {}",
+            reply["error"].dump());
+        ready_it->second = true;
+        cv_it->second.notify_one();
+        return;
+    }
+
     auto ned_position = gz::math::Vector3d(
         reply["x"].back().get<double>(),
         reply["y"].back().get<double>(),
@@ -365,7 +498,8 @@ void XdynWebsocket::onMessage(
         reply["r"].back().get<double>());
 
     // xdyn reports u,v,w and p,q,r in the BODY frame, so rotate into the world
-    // frame before handing them to the ECM.
+    // frame here. A plugin-side current is added back in getNewState, which
+    // holds the sample used for this very step.
     auto gz_lin_vel = vecNedToEnu(ned_quad.RotateVector(ned_lin_vel));
     auto gz_angular_vel = vecNedToEnu(ned_quad.RotateVector(ned_angular_vel));
 
@@ -389,22 +523,55 @@ XdynWebsocket::getNewState(
 {
     gz::math::Vector3d ned_position = vecEnuToNed(previous_state.pose.Pos());
     gz::math::Quaterniond ned_quad = quatEnuToNed(previous_state.pose.Rot());
+    gz::math::Vector3d ned_lin_vel = vecEnuToNed(previous_state.lin_vel);
+    gz::math::Vector3d ned_angular_vel = vecEnuToNed(previous_state.ang_vel);
+
+    const double dt_s = time_diff / 1000.0;
+
+    gz::math::Vector3d current_enu(0.0, 0.0, 0.0);
+    auto gm_it = m_gauss_markov_current.find(_entity);
+    if (gm_it != m_gauss_markov_current.end()) {
+        const auto [vc_x, vc_y] = gm_it->second->update(dt_s);
+        current_enu = vecNedToEnu(gz::math::Vector3d(vc_x, vc_y, 0.0));
+    } else {
+        // Measured-current replay uses the same slot (a vessel declares at
+        // most one of the two, enforced in createConnection). Unlike the
+        // Gauss-Markov process it is a function of DEPTH rather than of
+        // elapsed time, so it is sampled at the vessel's current depth --
+        // ned_position.Z(), NED and therefore positive downwards -- which is
+        // what makes the replayed profile's vertical shear act on the vehicle
+        // as it changes depth.
+        auto cop_it = m_copernicus_current.find(_entity);
+        if (cop_it != m_copernicus_current.end()) {
+            const auto [vc_x, vc_y] = cop_it->second->at(ned_position.Z());
+            current_enu = vecNedToEnu(gz::math::Vector3d(vc_x, vc_y, 0.0));
+        }
+    }
+
     // The ECM reports velocities in the WORLD frame; xdyn's u,v,w and p,q,r are
-    // BODY frame. Passing them through unrotated is only correct for a vessel
-    // heading due north; at any other heading the hydrodynamic model receives
-    // velocities along the wrong axes.
-    gz::math::Vector3d ned_lin_vel =
-        ned_quad.RotateVectorReverse(vecEnuToNed(previous_state.lin_vel));
-    gz::math::Vector3d ned_angular_vel =
+    // BODY frame, so rotate into BODY here. Passing them through unrotated is
+    // only correct for a vessel heading due north; at any other heading the
+    // hydrodynamic model receives velocities along the wrong axes.
+    //
+    // A depth-resolved current (`environment models: - model: ekman current`)
+    // is NOT applied here: it belongs to the vessel's own YAML, and injecting
+    // a second one from the plugin would double-count it. `current_enu`
+    // above is zero unless this vessel specifically requested a Gauss-Markov
+    // current, which is never combined with a YAML current on the same run.
+    const gz::math::Vector3d relative_lin_vel_enu =
+        previous_state.lin_vel - current_enu;
+    const gz::math::Vector3d body_lin_vel =
+        ned_quad.RotateVectorReverse(vecEnuToNed(relative_lin_vel_enu));
+    const gz::math::Vector3d body_ang_vel =
         ned_quad.RotateVectorReverse(vecEnuToNed(previous_state.ang_vel));
 
     json data = json::object();
-    data["Dt"] = time_diff / 1000.0;
+    data["Dt"] = dt_s;
     data["states"] = json::array();
     json previous_state_json = {
-        // Seconds, like Dt. time_diff is the step in milliseconds, not the
-        // state's clock: time-driven models (irregular waves, a time-indexed
-        // set-point) read this field directly and need the same unit as Dt.
+        // Seconds, like Dt. Time-driven models (irregular waves, a
+        // time-indexed set-point) read this clock directly, so the unit has to
+        // match Dt.
         {"t", previous_state.time},
         {"x", ned_position.X()},
         {"y", ned_position.Y()},
@@ -413,12 +580,12 @@ XdynWebsocket::getNewState(
         {"qj", ned_quad.Y()},
         {"qk", ned_quad.Z()},
         {"qr", ned_quad.W()},
-        {"u", ned_lin_vel.X()},
-        {"v", ned_lin_vel.Y()},
-        {"w", ned_lin_vel.Z()},
-        {"p", ned_angular_vel.X()},
-        {"q", ned_angular_vel.Y()},
-        {"r", ned_angular_vel.Z()}};
+        {"u", body_lin_vel.X()},
+        {"v", body_lin_vel.Y()},
+        {"w", body_lin_vel.Z()},
+        {"p", body_ang_vel.X()},
+        {"q", body_ang_vel.Y()},
+        {"r", body_ang_vel.Z()}};
     data["states"].push_back(previous_state_json);
 
     if (m_models_cmd_map_ptr->find(_entity) != m_models_cmd_map_ptr->end()) {
@@ -429,16 +596,37 @@ XdynWebsocket::getNewState(
     std::string msg_string = data.dump();
 
     if (send(_entity, msg_string)) {
-        double z = data["states"].back()["z"].get<double>() * (-1);
-        // Currently, xdyn assumes hydrodynamics as layers
-        if (z >= 10.0) {
-            return std::make_tuple(m_saved_state[_entity], DomainType::Aerial);
-        } else if (z <= -10.0) {
-            return std::make_tuple(
-                m_saved_state[_entity],
-                DomainType::Underwater);
+        // Integrate the pose from the velocity rather than keeping the x, y, z
+        // xdyn returned. xdyn is stepped from the state sent above and is
+        // deliberately kept unaware of a plugin-side current, so the position it
+        // returns advances on the RELATIVE velocity and drops that current's
+        // contribution for the step. Integrating here keeps one rule for both
+        // current sources. Trapezoidal, second order over the step.
+        auto state_it = m_saved_state.find(_entity);
+        if (state_it == m_saved_state.end()) {
+            return std::nullopt;
+        }
+
+        // xdyn was sent the velocity RELATIVE to current_enu: add it back once,
+        // so both the state handed out and the integration below see the true
+        // ground velocity. Zero unless this model declared a plugin-side
+        // current, so this is a no-op for the common case.
+        state_it->second.lin_vel += current_enu;
+
+        state_it->second.pose.Pos() = previous_state.pose.Pos() +
+            0.5 * (previous_state.lin_vel + state_it->second.lin_vel) * dt_s;
+
+        // ENU altitude, positive up, taken from the state just integrated.
+        const double z = state_it->second.pose.Pos().Z();
+        const double surface_depth = m_surface_depth.count(_entity)
+            ? m_surface_depth.at(_entity)
+            : DEFAULT_SURFACE_DEPTH;
+        if (z >= surface_depth) {
+            return std::make_tuple(state_it->second, DomainType::Aerial);
+        } else if (z <= -surface_depth) {
+            return std::make_tuple(state_it->second, DomainType::Underwater);
         } else {
-            return std::make_tuple(m_saved_state[_entity], DomainType::Surface);
+            return std::make_tuple(state_it->second, DomainType::Surface);
         }
     }
     return std::nullopt;
@@ -464,7 +652,7 @@ bool XdynWebsocket::send(
 
     // Take the message lock BEFORE sending and clear the ready flag: a reply
     // can come back on the websocket thread faster than we reach the wait, and
-    // a plain wait_for() then misses the notification and burns the full
+    // a plain wait_for() would then miss the notification and burn the full
     // timeout. Holding the lock across the send makes onMessage queue up behind
     // us until wait_for releases it.
     std::unique_lock<std::mutex> msg_lock(mutex_it->second);
@@ -473,8 +661,8 @@ bool XdynWebsocket::send(
     {
         std::unique_lock<std::mutex> lock(m_variable_mutex);
         // The connection is absent until activateInterface has succeeded, and
-        // is erased again on deactivate; operator[] hands back a default null
-        // pointer and dereferencing it segfaults.
+        // is erased again on deactivate; operator[] would hand back a default
+        // null pointer and dereferencing it segfaults.
         auto con_it = m_connection_mapping.find(_entity);
         if (con_it == m_connection_mapping.end() || !con_it->second) {
             m_logger->warn("Websocket connection not ready, skipping send.");

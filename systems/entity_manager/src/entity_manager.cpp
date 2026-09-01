@@ -311,10 +311,13 @@ void EntityManager::Update(
             const gz::sim::components::ModelSdf*) {
             auto name_opt =
                 m_ecm->Component<gz::sim::components::Name>(_entity);
-            std::string vessel_name;
             if (!name_opt) {
                 return true;
             }
+            // NOTE: must read the name from the component, not an empty local,
+            // otherwise m_vessels_entities never loses the key and the name stays
+            // permanently "taken" for addEntity's deconfliction check.
+            const std::string vessel_name = name_opt->Data();
             std::unique_lock<std::shared_mutex> lock(m_variable_mutex);
             m_vessels_entities.erase(vessel_name);
             m_vessels_names.erase(_entity);
@@ -508,22 +511,54 @@ std::optional<std::tuple<uint16_t, std::string>> EntityManager::addEntity(
         desiredName = msg.vessel_name;
     }
 
-    // Check no conflicting name
-    if (!desiredName.empty() &&
-        gz::sim::kNullEntity !=
-            m_ecm->EntityByComponents(
-                gz::sim::components::Name(desiredName),
-                gz::sim::components::ParentEntity(m_world_entity))) {
+    // Diagnostic: log the name the CLIENT actually requested, on entry, before any
+    // deconfliction. Comparing this against the "Created ... named [...]" line (and
+    // the "already taken" warn) makes a whole spawn run legible: if the same
+    // requested name shows up for two CREATE_CMDs, the client sent a duplicate
+    // (action-client cross-routing on the remote); if distinct requests still yield
+    // duplicate Gazebo entities, the host deconfliction is at fault.
+    m_logger->info(
+        "EntityManager::addEntity: CREATE_CMD requested vessel_name=[{}]",
+        msg.vessel_name);
+
+    // Reserve a unique name. A name is "taken" if it is either already tracked in
+    // m_vessels_entities (populated SYNCHRONOUSLY at the bottom of this function)
+    // or present in the ECM. The m_vessels_entities check is the important one for
+    // concurrency: when two remote machines spawn the same class at the same time,
+    // both CREATE_CMDs are drained into the same PreUpdate batch and handled
+    // sequentially, but CreateEntities() does NOT make the new entity visible to
+    // EntityByComponents() until the ECM rebuilds its views next cycle. Relying on
+    // the ECM alone therefore lets the second command reuse the first's name (two
+    // entities called "mybluerov0"). Registering the assigned name in
+    // m_vessels_entities right after creation closes that window. The actually
+    // assigned name is returned to the client via Result.name (handleMASCmd) so it
+    // can adopt it for all its topics.
+    auto nameTaken = [&](const std::string& n) -> bool {
+        {
+            std::shared_lock<std::shared_mutex> lock(m_variable_mutex);
+            if (m_vessels_entities.find(n) != m_vessels_entities.end()) {
+                return true;
+            }
+        }
+        return gz::sim::kNullEntity !=
+               m_ecm->EntityByComponents(
+                   gz::sim::components::Name(n),
+                   gz::sim::components::ParentEntity(m_world_entity));
+    };
+    if (!desiredName.empty() && nameTaken(desiredName)) {
         // Generate unique name
+        const std::string requestedName = desiredName;
         std::string newName = desiredName;
         int i = 0;
-        while (gz::sim::kNullEntity !=
-               m_ecm->EntityByComponents(
-                   gz::sim::components::Name(newName),
-                   gz::sim::components::ParentEntity(m_world_entity))) {
+        while (nameTaken(newName)) {
             newName = desiredName + "_" + std::to_string(i++);
         }
         desiredName = newName;
+        m_logger->warn(
+            "EntityManager::addEntity: requested name [{}] already taken; "
+            "assigned unique name [{}] instead.",
+            requestedName,
+            desiredName);
     }
     model.SetName(desiredName);
 
@@ -538,6 +573,14 @@ std::optional<std::tuple<uint16_t, std::string>> EntityManager::addEntity(
     }
     // Set parent
     m_creator->SetParent(entity, m_world_entity);
+    // Reserve the name synchronously so a later CREATE_CMD in the SAME PreUpdate
+    // batch sees it (EachNew only records it next cycle). EachNew re-sets the same
+    // mapping idempotently; deleteEntity / EachRemoved free it on despawn.
+    {
+        std::unique_lock<std::shared_mutex> lock(m_variable_mutex);
+        m_vessels_entities[desiredName] = entity;
+        m_vessels_names[entity] = desiredName;
+    }
     m_logger->info(
         "EntityManager::addEntity: Created entity [{}] named [{}]",
         entity,
@@ -667,12 +710,6 @@ void EntityManager::publishPose(
         auto entity = vessel_map.first;
         auto latLonEle = sphericalCoordinates(entity, _ecm);
         auto pose = worldPose(entity, _ecm);
-        if (!latLonEle) {
-            m_logger->warn(
-                "EntityManager::PostUpdate: Vessel: {} unable to find coordinate. Skip pose update.",
-                vessel_map.second);
-        }
-
         lotusim_msgs::msg::VesselPosition msg;
         msg.vessel_name = vessel_map.second;
 
@@ -684,9 +721,15 @@ void EntityManager::publishPose(
         msg.pose.orientation.y = pose.Rot().Y();
         msg.pose.orientation.z = pose.Rot().Z();
 
-        msg.geo_point.latitude = latLonEle.value().X();
-        msg.geo_point.longitude = latLonEle.value().Y();
-        msg.geo_point.altitude = latLonEle.value().Z();
+        if (latLonEle) {
+            msg.geo_point.latitude = latLonEle.value().X();
+            msg.geo_point.longitude = latLonEle.value().Y();
+            msg.geo_point.altitude = latLonEle.value().Z();
+        } else {
+            m_logger->warn(
+                "EntityManager::PostUpdate: Vessel: {} unable to find spherical coordinates, geo_point will be zero.",
+                vessel_map.second);
+        }
 
         array_msg.vessels.push_back(msg);
     }

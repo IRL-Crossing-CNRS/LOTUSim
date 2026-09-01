@@ -36,6 +36,7 @@
 #include <utility>
 
 #include "ais_sensor/ais_sensor.hpp"
+#include "battery_sensor/battery_sensor.hpp"
 #include "imu_sensor/imu_sensor.hpp"
 #include "lotusim_common/common.hpp"
 #include "lotusim_common/entity_group.hpp"

@@ -315,6 +315,17 @@ bool LotusimSensorPlugin::EachNew(
                 _entity,
                 model_name,
                 sensor_name);
+        } else if (type == "battery") {
+            m_logger->info(
+                "LotusimSensorPlugin::Battery: Creating sensor [{}/{}]",
+                model_name,
+                sensor_name);
+            sensor = CreateSensor<BatterySensor>(
+                data,
+                model_entity,
+                _entity,
+                model_name,
+                sensor_name);
         } else {
             return true;
         }
