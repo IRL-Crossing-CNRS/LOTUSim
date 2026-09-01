@@ -12,12 +12,15 @@ curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh -s -- --da
 ```
 For more options, check their official website: [Nix](https://nixos.org/download/). 
 
-#### 1. Add the ROS cache
+#### 1. Enable flakes and add the ROS cache
 
-Needs root, once per machine.
+Needs root, once per machine. The installer above leaves `nix-command` and
+`flakes` disabled, and every command below needs both; the cache is what keeps
+the first build minutes rather than hours.
 
 ```sh
 sudo tee -a /etc/nix/nix.conf <<'EOF'
+experimental-features = nix-command flakes
 extra-substituters = https://ros.cachix.org
 extra-trusted-public-keys = ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo=
 EOF
