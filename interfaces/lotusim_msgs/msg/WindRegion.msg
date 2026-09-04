@@ -24,3 +24,21 @@ bool enable_wind
 # would silently normalise by the wrong one. Putting sigma on the wire keeps
 # the convention where the knowledge is, in the producer.
 float64 turbulence_sigma 0.0
+
+# Speed [m/s] sampled across the region's radius, index 0 on the axis and the
+# last index at the boundary, evenly spaced in r/r_boundary. Empty (the
+# default, and what every pre-existing publisher produces) means the region is
+# radially uniform at linear_velocity, so this field is additive.
+#
+# Why it exists: a wake model computes a graded cross-wake profile, but a
+# region carries one linear_velocity. Publishing only that value forced the
+# producer to pick a single radius to represent the whole cross-section, and
+# it picked the axis -- so a vehicle anywhere in the cone was handed the
+# CENTRELINE deficit, out to the radius where the true deficit had already
+# decayed to the 5% cut-off. Integrated over the cross-section that is about
+# 2.1x the deficit the model actually predicts, and it turns a graded profile
+# into a top-hat with no interior gradient at all.
+#
+# Direction comes from linear_velocity as before; only the magnitude varies
+# with radius, which is what the wake models vary.
+float64[] radial_speed

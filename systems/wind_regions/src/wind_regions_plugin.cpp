@@ -117,6 +117,8 @@ void WindRegionsPlugin::Configure(
                     region.linear_velocity.y,
                     region.linear_velocity.z);
                 state.turbulence_sigma = std::max(0.0, region.turbulence_sigma);
+                state.radial_speed.assign(
+                    region.radial_speed.begin(), region.radial_speed.end());
                 state.enable_wind = region.enable_wind;
                 regions.push_back(std::move(state));
             }
@@ -168,6 +170,30 @@ std::shared_ptr<const WindRegionsPlugin::RegionShape> WindRegionsPlugin::MakeSha
         _region.box.x1, _region.box.y1, _region.box.x2, _region.box.y2);
 }
 
+double WindRegionsPlugin::SampleRadial(
+    const std::vector<double>& _profile,
+    double _frac)
+{
+    // Samples are evenly spaced in r/r_boundary, index 0 on the axis and the
+    // last index at the boundary, so the position in the array is just the
+    // fraction scaled by the number of intervals. Linear between samples: the
+    // point is to restore a continuous gradient, and anything higher-order
+    // would be inventing structure the producer did not send.
+    const std::size_t n = _profile.size();
+    if (n == 0) {
+        return 0.0;
+    }
+    if (n == 1) {
+        return _profile[0];
+    }
+    const double t = std::clamp(_frac, 0.0, 1.0) * static_cast<double>(n - 1);
+    const std::size_t i = static_cast<std::size_t>(t);
+    if (i >= n - 1) {
+        return _profile[n - 1];
+    }
+    return _profile[i] + (t - static_cast<double>(i)) * (_profile[i + 1] - _profile[i]);
+}
+
 bool WindRegionsPlugin::ResolveWind(
     double _x,
     double _y,
@@ -180,12 +206,27 @@ bool WindRegionsPlugin::ResolveWind(
     double& _sigma)
 {
     // Last matching region in the list wins on overlap.
+    double frac = 0.0;
     for (auto it = _regions.rbegin(); it != _regions.rend(); ++it) {
-        if (it->Contains(_x, _y, _z)) {
+        if (it->Contains(_x, _y, _z, &frac)) {
             if (!it->enable_wind) {
                 return false;
             }
             _wind = it->velocity;
+            // A graded region carries speed sampled across its radius. Without
+            // this the whole cross-section gets linear_velocity, which for a
+            // wake means every point inside is handed the centreline deficit.
+            const auto& prof = it->radial_speed;
+            if (prof.size() >= 2) {
+                const double u = SampleRadial(prof, frac);
+                const double len = _wind.Length();
+                // Direction is carried by linear_velocity; only magnitude
+                // varies with radius. A zero vector has no direction to
+                // scale, so leave it alone rather than divide by zero.
+                if (len > 1e-9) {
+                    _wind *= (u / len);
+                }
+            }
             _sigma = it->turbulence_sigma;
             return true;
         }

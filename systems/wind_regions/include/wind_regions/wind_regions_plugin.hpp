@@ -120,7 +120,12 @@ private:
     class RegionShape {
     public:
         virtual ~RegionShape() = default;
-        virtual bool Contains(double _x, double _y, double _z) const = 0;
+        /// @param _frac if non-null, receives the query point's radial
+        /// position in the region, 0 on the axis and 1 at the boundary. Only
+        /// meaningful when Contains() returns true. Shapes with no radial
+        /// structure write 0.
+        virtual bool Contains(double _x, double _y, double _z,
+                              double* _frac = nullptr) const = 0;
     };
 
     class BoxShape : public RegionShape {
@@ -134,8 +139,10 @@ private:
         /// heights, which is the convention WindRegionBox documents and what
         /// ground-level gust patches rely on. Only cone segments have
         /// vertical extent.
-        bool Contains(double _x, double _y, double) const override
+        bool Contains(double _x, double _y, double,
+                      double* _frac = nullptr) const override
         {
+            if (_frac) { *_frac = 0.0; }
             return _x >= m_x1 && _x <= m_x2 && _y >= m_y1 && _y <= m_y2;
         }
 
@@ -174,8 +181,10 @@ private:
         {
         }
 
-        bool Contains(double _x, double _y, double _z) const override
+        bool Contains(double _x, double _y, double _z,
+                      double* _frac = nullptr) const override
         {
+            if (_frac) { *_frac = 0.0; }
             double dx = _x - m_origin.X();
             double dy = _y - m_origin.Y();
             double dz = _z - m_origin.Z();
@@ -187,7 +196,14 @@ private:
             double r = m_rStart + (m_rEnd - m_rStart) * (d / m_length);
             // Radial distance from the (horizontal) axis line, so the bound
             // applies equally to sideways and vertical offset.
-            return (lateral * lateral + dz * dz) <= r * r;
+            const double rr = lateral * lateral + dz * dz;
+            if (rr > r * r) {
+                return false;
+            }
+            if (_frac && r > 0.0) {
+                *_frac = std::sqrt(rr) / r;
+            }
+            return true;
         }
 
     private:
@@ -201,6 +217,12 @@ private:
      * place in the plugin that knows about `shape_type` — everything else
      * only ever calls RegionShape::Contains().
      */
+    /**
+     * @brief Speed at radial fraction @p _frac (0 axis, 1 boundary) from a
+     * profile sampled evenly across the radius. Linear interpolation.
+     */
+    static double SampleRadial(const std::vector<double>& _profile, double _frac);
+
     static std::shared_ptr<const RegionShape> MakeShape(
         const lotusim_msgs::msg::WindRegion& _region);
 
@@ -215,10 +237,14 @@ private:
         gz::math::Vector3d velocity = gz::math::Vector3d::Zero;
         double turbulence_sigma = 0.0;
         bool enable_wind = false;
+        /// Speed across the radius, axis first, boundary last. Empty means
+        /// radially uniform at `velocity` (every pre-existing publisher).
+        std::vector<double> radial_speed;
 
-        bool Contains(double _x, double _y, double _z) const
+        bool Contains(double _x, double _y, double _z,
+                      double* _frac = nullptr) const
         {
-            return shape && shape->Contains(_x, _y, _z);
+            return shape && shape->Contains(_x, _y, _z, _frac);
         }
     };
 
