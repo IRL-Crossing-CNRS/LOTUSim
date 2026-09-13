@@ -56,6 +56,24 @@ void WindRegionsPlugin::Configure(
 
     m_scaling_factor = _sdf->Get<double>("scaling_factor", 1.0).first;
 
+    // Turbulence knobs. Every default here is the "off" value, so a world
+    // file written before this feature existed keeps its exact previous
+    // behaviour: sigma 0 everywhere makes the gust term identically zero.
+    m_ambient_sigma =
+        std::max(0.0, _sdf->Get<double>("ambient_turbulence_sigma", 0.0).first);
+    m_turbulence_time_constant =
+        std::max(1e-3, _sdf->Get<double>("turbulence_time_constant", 1.0).first);
+    m_sigma_ratio_v =
+        std::max(0.0, _sdf->Get<double>("turbulence_sigma_ratio_v", 0.8).first);
+    m_sigma_ratio_w =
+        std::max(0.0, _sdf->Get<double>("turbulence_sigma_ratio_w", 0.5).first);
+    // A fixed default seed rather than a clock-derived one: an unseeded run
+    // that silently differs from the last is the harder failure to notice,
+    // and every experiment we run wants repeatability by default. Vary the
+    // seed explicitly, per repetition, when independent draws are the point.
+    const int seed = _sdf->Get<int>("turbulence_seed", 0).first;
+    m_rng.seed(static_cast<std::mt19937::result_type>(seed));
+
     m_ros_node = rclcpp::Node::make_shared("wind_regions_plugin", m_world_name);
 
     // kWindTopic is written by both the Wind agent (TRANSIENT_LOCAL) and,
@@ -98,6 +116,7 @@ void WindRegionsPlugin::Configure(
                     region.linear_velocity.x,
                     region.linear_velocity.y,
                     region.linear_velocity.z);
+                state.turbulence_sigma = std::max(0.0, region.turbulence_sigma);
                 state.enable_wind = region.enable_wind;
                 regions.push_back(std::move(state));
             }
@@ -120,8 +139,15 @@ void WindRegionsPlugin::Configure(
     }
 
     m_logger->info(
-        "WindRegionsPlugin ready (scaling_factor={}). Subscribed to {} and {}.",
+        "WindRegionsPlugin ready (scaling_factor={}, ambient_turbulence_sigma={} "
+        "m/s, turbulence_time_constant={} s, sigma_ratio_v/w={}/{}, seed={}). "
+        "Subscribed to {} and {}.",
         m_scaling_factor,
+        m_ambient_sigma,
+        m_turbulence_time_constant,
+        m_sigma_ratio_v,
+        m_sigma_ratio_w,
+        seed,
         kWindTopic,
         kWindRegionsTopic);
 }
@@ -149,7 +175,9 @@ bool WindRegionsPlugin::ResolveWind(
     const std::vector<RegionState>& _regions,
     const gz::math::Vector3d& _globalWind,
     bool _globalEnableWind,
-    gz::math::Vector3d& _wind)
+    double _ambientSigma,
+    gz::math::Vector3d& _wind,
+    double& _sigma)
 {
     // Last matching region in the list wins on overlap.
     for (auto it = _regions.rbegin(); it != _regions.rend(); ++it) {
@@ -158,6 +186,7 @@ bool WindRegionsPlugin::ResolveWind(
                 return false;
             }
             _wind = it->velocity;
+            _sigma = it->turbulence_sigma;
             return true;
         }
     }
@@ -165,7 +194,54 @@ bool WindRegionsPlugin::ResolveWind(
         return false;
     }
     _wind = _globalWind;
+    _sigma = _ambientSigma;
     return true;
+}
+
+gz::math::Vector3d WindRegionsPlugin::AdvanceGust(
+    gz::sim::Entity _entity,
+    double _dt,
+    double _sigma,
+    const gz::math::Vector3d& _wind)
+{
+    if (_sigma <= 0.0 || _dt <= 0.0) {
+        return gz::math::Vector3d::Zero;
+    }
+
+    // Exact discrete Ornstein-Uhlenbeck update, held at unit variance:
+    //   a = exp(-dt/T)              how much of the previous gust survives
+    //   b = sqrt(1 - a*a)           the fresh noise that keeps Var(n) == 1
+    // a^2 + b^2 == 1 is what makes this exact for any dt rather than a
+    // small-dt approximation, so the gust statistics do not drift if the
+    // physics step ever changes.
+    const double a = std::exp(-_dt / m_turbulence_time_constant);
+    const double b = std::sqrt(std::max(0.0, 1.0 - a * a));
+
+    gz::math::Vector3d& n = m_gust_state[_entity];
+    n.Set(
+        a * n.X() + b * m_normal(m_rng),
+        a * n.Y() + b * m_normal(m_rng),
+        a * n.Z() + b * m_normal(m_rng));
+
+    // Resolve the three components onto the local mean wind: along it,
+    // horizontally across it, and vertically. Atmospheric turbulence is not
+    // isotropic — the vertical component is roughly half the along-wind one
+    // (IEC 61400-1 normal turbulence model) — and a multirotor does not
+    // respond the same way to a headwind gust as to a downdraft, so the
+    // distinction is worth keeping.
+    gz::math::Vector3d along(_wind.X(), _wind.Y(), 0.0);
+    const double speed = along.Length();
+    if (speed < 1e-6) {
+        // Calm mean wind: no preferred horizontal axis to resolve onto, so
+        // fall back to world axes rather than an arbitrary one.
+        along.Set(1.0, 0.0, 0.0);
+    } else {
+        along /= speed;
+    }
+    const gz::math::Vector3d across(-along.Y(), along.X(), 0.0);
+
+    return along * (_sigma * n.X()) + across * (_sigma * m_sigma_ratio_v * n.Y())
+           + gz::math::Vector3d::UnitZ * (_sigma * m_sigma_ratio_w * n.Z());
 }
 
 void WindRegionsPlugin::Update(
@@ -176,6 +252,8 @@ void WindRegionsPlugin::Update(
         return;
     }
 
+    const double dt = std::chrono::duration<double>(_info.dt).count();
+
     // Newly spawned wind-enabled links need velocity checks turned on once
     // before WorldLinearVelocity() will return a value (see Link::Enable
     // VelocityChecks docs) — mirrors PhysicsInterfacePlugin::loadVessel.
@@ -184,6 +262,15 @@ void WindRegionsPlugin::Update(
             const gz::sim::components::Link*,
             const gz::sim::components::WindMode*) -> bool {
             gz::sim::Link(_entity).EnableVelocityChecks(_ecm);
+            return true;
+        });
+
+    // Drop the turbulence state of links that have gone away, so a scenario
+    // that spawns and despawns vehicles does not accumulate dead entries.
+    _ecm.EachRemoved<gz::sim::components::Link>(
+        [&](const gz::sim::Entity& _entity,
+            const gz::sim::components::Link*) -> bool {
+            m_gust_state.erase(_entity);
             return true;
         });
 
@@ -206,6 +293,7 @@ void WindRegionsPlugin::Update(
     int links_force_applied = 0;
     gz::math::Vector3d last_force;
     gz::math::Vector3d last_wind;
+    double last_sigma = 0.0;
 
     _ecm.Each<gz::sim::components::Link, gz::sim::components::WindMode>(
         [&](const gz::sim::Entity& _entity,
@@ -226,6 +314,7 @@ void WindRegionsPlugin::Update(
             }
 
             gz::math::Vector3d wind;
+            double sigma = 0.0;
             if (!ResolveWind(
                     pose->Pos().X(),
                     pose->Pos().Y(),
@@ -233,12 +322,23 @@ void WindRegionsPlugin::Update(
                     regions_snapshot,
                     global_wind_snapshot,
                     global_enable_snapshot,
-                    wind)) {
+                    m_ambient_sigma,
+                    wind,
+                    sigma)) {
                 return true;
             }
 
+            // The turbulent fluctuation rides on top of the mean field: it is
+            // zero-mean by construction, so it perturbs what this link feels
+            // without shifting the mean wind the wake model was validated
+            // against. Deliberately applied only here, on the vehicle force
+            // path — the rotor-averaged speeds that drive turbine power, and
+            // the wake geometry itself, both stay on the mean field.
+            wind += AdvanceGust(_entity, dt, sigma, wind);
+
             // Matches stock WindEffects: force = mass * scaling_factor *
-            // (wind - link_velocity), so mass cancels out of the resulting
+            // (wind - link_velocity), with `wind` now carrying the gust
+            // added above, so mass cancels out of the resulting
             // acceleration (a = scaling_factor * relative_velocity,
             // independent of the link's mass) — without the mass factor a
             // heavier link (e.g. x500's 2 kg base_link) would visibly
@@ -250,6 +350,7 @@ void WindRegionsPlugin::Update(
             ++links_force_applied;
             last_force = force;
             last_wind = wind;
+            last_sigma = sigma;
             return true;
         });
 
@@ -258,13 +359,15 @@ void WindRegionsPlugin::Update(
         m_logger->debug(
             "WindRegionsPlugin::Update: {} wind-enabled link(s), {} skipped "
             "(missing pose/velocity/inertial), {} with force applied (last: "
-            "wind=[{:.2f},{:.2f},{:.2f}] force=[{:.2f},{:.2f},{:.2f}]N).",
+            "wind=[{:.2f},{:.2f},{:.2f}] sigma={:.2f} "
+            "force=[{:.2f},{:.2f},{:.2f}]N).",
             links_seen,
             links_skipped_no_data,
             links_force_applied,
             last_wind.X(),
             last_wind.Y(),
             last_wind.Z(),
+            last_sigma,
             last_force.X(),
             last_force.Y(),
             last_force.Z());

@@ -68,7 +68,7 @@
          wind on top of the ambient/global vector, and subscribes to ROS
          directly instead of via a gz-transport bridge) -->
     <plugin filename="wind_regions_plugin" name="lotusim::gazebo::WindRegionsPlugin">
-      <scaling_factor>1.0</scaling_factor>
+      <scaling_factor>0.35</scaling_factor>
     </plugin>
   </world>
 </sdf>
