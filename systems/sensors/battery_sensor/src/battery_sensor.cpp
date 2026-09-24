@@ -282,9 +282,6 @@ bool BatterySensor::UpdateSensor(
         m_subscribed = true;
     }
 
-    // Drain the ROS 2 callback queue so RPM updates are processed
-    rclcpp::spin_some(m_ros_node);
-
     if (_info.paused)
         return true;
 
