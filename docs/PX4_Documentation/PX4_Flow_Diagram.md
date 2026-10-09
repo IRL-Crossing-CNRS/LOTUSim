@@ -21,9 +21,9 @@ flowchart LR
     X500Agent -->|MAS CREATE_CMD| MainMAS["/defenseScenario/mas_cmd"]
 
     subgraph MainWorld["Gazebo main world: defenseScenario"]
-        MainMAS --> AEM["AerialEntityManager<br>inherits EntityManager"]
+        MainMAS --> AEM["AerialMAS<br>inherits MultiAgentSystem"]
 
-        AEM -->|base EntityManager addEntity| MainX500["Main-world x500 entity<br>LOTUSim and Unity render object"]
+        AEM -->|base EntitySpawner addEntity| MainX500["Main-world x500 entity<br>LOTUSim and Unity render object"]
         AEM -->|customUserAddEntity forwards command| AerialMASOut["forward to aerial world"]
 
         PhysicsPlugin["PhysicsInterfacePlugin"] -->|getNewState| ROS2Interface["ROS2Interface<br>stores latest aerial pose"]
@@ -31,7 +31,7 @@ flowchart LR
         PhysicsPlugin -->|SetComponentData Pose| MainX500
 
         MainX500 --> RenderPlugin["RenderPlugin"]
-        MainX500 --> MainPosePub["EntityManager pose publishing<br>inside AerialEntityManager"]
+        MainX500 --> MainPosePub["MultiAgentSystem pose publishing<br>inside AerialMAS"]
 
         RenderPlugin -->|/defenseScenario/renderer_cmd| ROS2["ROS 2 graph"]
         RenderPlugin -->|/defenseScenario/renderer_poses| ROS2
@@ -41,7 +41,7 @@ flowchart LR
     AerialMASOut --> AerialMAS["/aerialPx4World/mas_cmd"]
 
     subgraph AerialWorld["Gazebo aerial world: aerialPx4World"]
-        AerialMAS --> AerialEM["EntityManager"]
+        AerialMAS --> AerialEM["MultiAgentSystem"]
         AerialEM -->|addEntity cmd| RealX500["x5000<br>x500_px4 Gazebo model"]
 
         RealX500 --> MotorPlugins["MulticopterMotorModel plugins"]
@@ -49,7 +49,7 @@ flowchart LR
         Physics -->|updates model pose| RealX500
 
         RealX500 --> Sensors["IMU / barometer / GPS / magnetometer"]
-        RealX500 --> AerialPosePub["EntityManager pose publishing"]
+        RealX500 --> AerialPosePub["MultiAgentSystem pose publishing"]
         AerialPosePub -->|/aerialPx4World/poses| ROS2
     end
 
@@ -69,12 +69,12 @@ flowchart LR
 
 ## Main-World Detail
 
-The main world does not load a separate normal `EntityManager` plugin. It loads `AerialEntityManager`, which inherits from `EntityManager`.
+The main world does not load a separate normal `MultiAgentSystem` plugin. It loads `AerialMAS`, which inherits from `MultiAgentSystem`.
 
-That means `AerialEntityManager` does both jobs:
+That means `AerialMAS` does both jobs:
 
 - receives `/defenseScenario/mas_cmd`;
-- spawns/registers the main-world x500 entity through the base `EntityManager::addEntity(cmd)`;
+- spawns/registers the main-world x500 entity through the base `EntitySpawner::addEntity(cmd)`;
 - forwards the same aerial command to `/aerialPx4World/mas_cmd`.
 
 ```mermaid
@@ -82,9 +82,9 @@ flowchart LR
     X500Agent["X500 Python agent"] -->|MAS CREATE_CMD| MainMAS["/defenseScenario/mas_cmd"]
 
     subgraph MainWorld["defenseScenario"]
-        MainMAS --> AEM["AerialEntityManager<br>inherits EntityManager"]
+        MainMAS --> AEM["AerialMAS<br>inherits MultiAgentSystem"]
 
-        AEM -->|base EntityManager addEntity| MainX500["Main-world x500 entity"]
+        AEM -->|base EntitySpawner addEntity| MainX500["Main-world x500 entity"]
         AEM -->|aerial hook customUserAddEntity| Forward["Forward same command"]
 
         MainX500 --> RenderPlugin["RenderPlugin"]
@@ -103,7 +103,7 @@ This is done through `ROS2Interface` and `PhysicsInterfacePlugin`, not through a
 ```mermaid
 flowchart LR
     subgraph AerialWorld["aerialPx4World"]
-        RealX500["x5000 real PX4 model"] --> AerialEM["EntityManager"]
+        RealX500["x5000 real PX4 model"] --> AerialEM["MultiAgentSystem"]
         AerialEM -->|publishes| AerialPoses["/aerialPx4World/poses"]
     end
 
@@ -126,20 +126,20 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant XA as X500 Python agent
-    participant AEM as defenseScenario AerialEntityManager
+    participant AEM as defenseScenario AerialMAS
     participant MX as Main-world x500 entity
-    participant AEM2 as aerialPx4World EntityManager
+    participant AEM2 as aerialPx4World MultiAgentSystem
     participant RX as Real x5000 PX4 model
     participant RI as ROS2Interface
     participant RP as RenderPlugin
     participant U as Unity
 
     XA->>AEM: MAS CREATE_CMD on /defenseScenario/mas_cmd
-    AEM->>AEM: EntityManager handleMASCmd
-    AEM->>AEM: EntityManager addEntity
+    AEM->>AEM: MultiAgentSystem handleMASCmd
+    AEM->>AEM: EntitySpawner addEntity
     AEM->>MX: Spawn/register main-world x500
     AEM->>AEM2: Forward same MAS command
-    AEM2->>AEM2: EntityManager addEntity
+    AEM2->>AEM2: EntitySpawner addEntity
     AEM2->>RX: Spawn real x5000 in aerialPx4World
     RX-->>RI: Aerial pose via /aerialPx4World/poses
     RI->>MX: PhysicsInterfacePlugin applies pose to main-world x500
@@ -162,16 +162,16 @@ src/simulation_run/simulation_run/simulation_runner.py
 src/agents/x500/x500/x500.py
 ```
 
-Main-world `AerialEntityManager` receives the main MAS command and forwards aerial commands:
+Main-world `AerialMAS` receives the main MAS command and forwards aerial commands:
 
 ```text
-LOTUSim/systems/aerial_demo_entity_manager/src/aerial_entity_manager.cpp
+LOTUSim/systems/aerial_demo_entity_manager/src/aerial_mas.cpp
 ```
 
-`EntityManager` spawns models and publishes `/<world>/poses`:
+`MultiAgentSystem` spawns models and publishes `/<world>/poses`:
 
 ```text
-LOTUSim/systems/entity_manager/src/entity_manager.cpp
+LOTUSim/systems/lotusim_mas/src/multi_agent_system.cpp
 ```
 
 `ROS2Interface` subscribes to aerial poses:
@@ -197,7 +197,7 @@ LOTUSim/systems/render_interface/src/ros_interface.cpp
 
 The real drone is the `x5000` model in `aerialPx4World`. PX4 controls it through Gazebo motor commands, and Gazebo physics updates its pose.
 
-The aerial world's `EntityManager` publishes that pose on `/aerialPx4World/poses`. The main world's `ROS2Interface` subscribes to that pose stream and the `PhysicsInterfacePlugin` applies the pose to the main-world x500 entity. Then `RenderPlugin` reads the main-world x500 pose and publishes `/defenseScenario/renderer_poses`, which reaches Unity through `ros_tcp_endpoint`.
+The aerial world's `MultiAgentSystem` publishes that pose on `/aerialPx4World/poses`. The main world's `ROS2Interface` subscribes to that pose stream and the `PhysicsInterfacePlugin` applies the pose to the main-world x500 entity. Then `RenderPlugin` reads the main-world x500 pose and publishes `/defenseScenario/renderer_poses`, which reaches Unity through `ros_tcp_endpoint`.
 
 So the Unity path is:
 
