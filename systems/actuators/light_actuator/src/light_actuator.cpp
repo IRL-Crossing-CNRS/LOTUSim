@@ -25,9 +25,14 @@ namespace lotusim::actuator {
 
 LightActuatorPlugin::LightActuatorPlugin()
 {
-    m_logger = logger::createConsoleAndFileLogger(
-        "light_actuator",
-        "light_actuator.txt");
+    // One logger for every instance. Gazebo builds this plugin once per model
+    // that carries it, and creating "light_actuator" a second time throws; the
+    // exception then fails that model's spawn.
+    static const std::shared_ptr<spdlog::logger> shared_logger =
+        logger::createConsoleAndFileLogger(
+            "light_actuator",
+            "light_actuator.txt");
+    m_logger = shared_logger;
 }
 
 LightActuatorPlugin::~LightActuatorPlugin()
