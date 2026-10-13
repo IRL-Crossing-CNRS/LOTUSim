@@ -20,3 +20,9 @@ log/
 result
 result-*
 .direnv/
+
+# Documentation site build
+docs/site/_build/
+docs/site/_collected/
+docs/site/_collected_assets/
+docs/site/.venv/
