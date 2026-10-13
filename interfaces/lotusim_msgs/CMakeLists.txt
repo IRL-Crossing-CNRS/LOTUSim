@@ -9,6 +9,7 @@ find_package(std_srvs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Log.msg"
   "msg/MASCmd.msg"
   "msg/VesselCmd.msg"
   "msg/VesselCmdArray.msg"
@@ -16,20 +17,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/VesselPositionArray.msg"
   "msg/RendererCmd.msg"
   "msg/Wind.msg"
-  "msg/WindRegionBox.msg"
-  "msg/WindRegionConeSegment.msg"
-  "msg/WindRegion.msg"
-  "msg/WindRegionArray.msg"
-  "msg/OceanCurrent.msg"
   "msg/SimStats.msg"
   "msg/WaypointFollowerStatus.msg"
-  "msg/WindTurbineState.msg"
-  "msg/WindTurbineArray.msg"
-  "msg/LCOEState.msg"
-  "msg/GuidanceSetpoint.msg"
+  "msg/PowerStatus.msg"
   "action/MASCmdArray.action"
   "action/MASCmd.action"
   "srv/SetWaypoints.srv"
+  "srv/String.srv"
   
   DEPENDENCIES 
     builtin_interfaces

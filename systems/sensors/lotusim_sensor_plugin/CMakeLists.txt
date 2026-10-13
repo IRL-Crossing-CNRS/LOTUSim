@@ -49,8 +49,8 @@ find_package(lotusim_sensor_base REQUIRED)
 find_package(subsea_pressure_sensor REQUIRED)
 find_package(ais_sensor REQUIRED)
 find_package(imu_sensor REQUIRED)
-find_package(battery_sensor REQUIRED)
 find_package(radar_sensor REQUIRED)
+find_package(sector_scanner_sensor REQUIRED)
 find_package(gz-rendering8 REQUIRED)
 find_package(gz-sensors8 REQUIRED)
 
@@ -74,7 +74,7 @@ target_link_libraries(lotusim_sensor_plugin
   gz-sensors8::gpu_lidar
   gz-sensors8::rendering   
 )
-ament_target_dependencies(lotusim_sensor_plugin
+ament_target_dependencies(lotusim_sensor_plugin 
   ament_cmake
   lotusim_common
   lotusim_sensor_base
@@ -82,7 +82,7 @@ ament_target_dependencies(lotusim_sensor_plugin
   ais_sensor
   imu_sensor
   radar_sensor
-  battery_sensor
+  sector_scanner_sensor
 )
 ament_export_include_directories(include)
 ament_export_dependencies(
@@ -93,7 +93,7 @@ ament_export_dependencies(
   ais_sensor
   imu_sensor
   radar_sensor
-  battery_sensor
+  sector_scanner_sensor
 )
 ament_export_targets(
   export_lotusim_sensor_plugin

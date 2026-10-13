@@ -11,7 +11,11 @@
 #define LOTUSIM_COMMON_HPP_
 
 #include <algorithm>
+#include <cmath>
+#include <gz/math/Matrix3.hh>
 #include <gz/math/Pose3.hh>
+#include <gz/math/Quaternion.hh>
+#include <gz/math/Vector3.hh>
 #include <gz/sim/System.hh>
 #include <gz/sim/components/Model.hh>
 #include <gz/sim/components/Name.hh>
@@ -24,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "gz/math/SphericalCoordinates.hh"
 #include "std_msgs/msg/header.hpp"
 
 namespace lotusim::common {
@@ -32,6 +37,41 @@ enum class RandomisedType
 {
     NONE,
     RANDOM
+};
+
+class PowerStateRegistry {
+public:
+    /**
+     * @brief Returns the single shared instance of the registry
+     *        Defined in common.cpp so all shared libraries (.so) that link
+     *        against lotusim_common share the same instance
+     */
+    static PowerStateRegistry& instance();
+
+    /**
+     * @brief Sets the power state for a sensor
+     *        Called by SensorPowerConsumer::update() every sim tick from
+     *        PowerManagerInstance::Update(), which runs before PostUpdate().
+     * @param key     vessel_name + "/" + sensor_name
+     * @param powered true = sensor is active, false = sensor is deactivated
+     */
+    void set(const std::string& key, bool powered);
+
+    /**
+     * @brief Returns the power state for a sensor
+     *        Called by LotusimSensorPlugin::PostUpdate() before calling
+     *        UpdateSensor(). if false the sensor update is skipped entirely.
+     * @param key        vessel_name + "/" + sensor_name
+     * @param defaultVal returned when the key is not in the registry
+     *                   defaults to true so sensors without a power manager
+     *                   always run normally.
+     */
+    bool get(const std::string& key, bool defaultVal = true);
+
+private:
+    PowerStateRegistry() = default;
+    std::mutex m_mutex;
+    std::unordered_map<std::string, bool> m_flags;
 };
 
 /**
@@ -78,6 +118,111 @@ bool pose3Eql(const gz::math::Pose3d& _a, const gz::math::Pose3d& _b);
  */
 std::string getWorldName(const gz::sim::EntityComponentManager& _ecm);
 
+// World: ENU (East,North,Up) <-> NED (North,East,Down): x_ned=y_enu,
+// y_ned=x_enu, z_ned=-z_enu
+static const gz::math::Matrix3d kWorldEnuNed(0, 1, 0, 1, 0, 0, 0, 0, -1);
+static const gz::math::Matrix3d kWorldNedEnu(0, 1, 0, 1, 0, 0, 0, 0, -1);
+// Body: FLU (Fwd,Left,Up) <-> FRD (Fwd,Right,Down): u_frd=u_flu, v_frd=-v_flu,
+// w_frd=-w_flu
+static const gz::math::Matrix3d kBodyFluFrd(1, 0, 0, 0, -1, 0, 0, 0, -1);
+static const gz::math::Matrix3d kBodyFrdFlu(1, 0, 0, 0, -1, 0, 0, 0, -1);
+
+// World: ENU (East,North,Up) <-> EUN (East,Up,North): swap Y,Z (Unity)
+static const gz::math::Matrix3d kWorldEnuEun(1, 0, 0, 0, 0, 1, 0, 1, 0);
+// Body: FLU (Fwd,Left,Up) <-> FUL (Fwd,Up,Left): swap Y,Z -- mirrors the
+// world swap above for this convention.
+static const gz::math::Matrix3d kBodyFluFul(1, 0, 0, 0, 0, 1, 0, 1, 0);
+
+// World: ENU (East,North,Up) <-> NEU (North,East,Up): swap X,Y (Unreal)
+static const gz::math::Matrix3d kWorldEnuNeu(0, 1, 0, 1, 0, 0, 0, 0, 1);
+// Body: FLU (Fwd,Left,Up) <-> FRU (Fwd,Right,Up): Left<->Right flip only.
+static const gz::math::Matrix3d kBodyFluFru(1, 0, 0, 0, -1, 0, 0, 0, 1);
+
+/**
+ * @brief Change an attitude quaternion between world and body axis frames.
+ *
+ * @param q Source attitude quaternion.
+ * @param worldC World-frame axis conversion matrix.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @return The attitude quaternion in the target convention.
+ */
+gz::math::Quaterniond quatChangeFrame(
+    const gz::math::Quaterniond& q,
+    const gz::math::Matrix3d& worldC,
+    const gz::math::Matrix3d& bodyC);
+
+/**
+ * @brief Change the position and attitude of a pose between conventions.
+ *
+ * @param pose Source pose.
+ * @param worldC World-frame axis conversion matrix.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @return The pose in the target convention.
+ */
+gz::math::Pose3d poseChangeFrame(
+    const gz::math::Pose3d& pose,
+    const gz::math::Matrix3d& worldC,
+    const gz::math::Matrix3d& bodyC);
+
+/**
+ * @brief Relabel an ordinary vector from source to the target body frame.
+ *
+ * @note Ordinary body-frame vector (e.g. linear velocity): just the
+ * relabeling, no extra sign.
+ * @param v Vector in the body frame.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @return The vector in the target body frame.
+ */
+gz::math::Vector3d vecBodyChangeFrame(
+    const gz::math::Vector3d& v,
+    const gz::math::Matrix3d& bodyC);
+
+/**
+ * @brief Relabel a body-frame pseudovector, including handedness correction.
+ *
+ * @note Body-frame pseudovector (e.g. angular velocity): picks up an extra
+ * sign of det(bodyC) relative to an ordinary vector whenever bodyC flips
+ * handedness.
+ * @param v Vector in the body frame.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @return The pseudovector in the target body frame.
+ */
+gz::math::Vector3d pseudoVecBodyChangeFrame(
+    const gz::math::Vector3d& v,
+    const gz::math::Matrix3d& bodyC);
+
+/**
+ * @brief Convert a world-frame velocity to the target body frame.
+ *
+ * @param v_world Velocity in the source world frame.
+ * @param q_world_attitude Vehicle attitude, rotating from the source body
+ * frame to the source world frame.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @param isPseudoVector Whether the velocity is an angular pseudovector.
+ * @return The velocity in the target body frame.
+ */
+gz::math::Vector3d worldVelToTargetBody(
+    const gz::math::Vector3d& v_world,
+    const gz::math::Quaterniond& q_world_attitude,
+    const gz::math::Matrix3d& bodyC,
+    bool isPseudoVector);
+
+/**
+ * @brief Convert a target body-frame velocity to the source world frame.
+ *
+ * @param v_body_target Velocity in the target body frame.
+ * @param q_world_attitude Vehicle attitude, rotating from the source body
+ * frame to the source world frame.
+ * @param bodyC Body-frame axis conversion matrix.
+ * @param isPseudoVector Whether the velocity is an angular pseudovector.
+ * @return The velocity in the source world frame.
+ */
+gz::math::Vector3d targetBodyVelToWorld(
+    const gz::math::Vector3d& v_body_target,
+    const gz::math::Quaterniond& q_world_attitude,
+    const gz::math::Matrix3d& bodyC,
+    bool isPseudoVector);
+
 /**
  * @brief Get the Model Name object regardless of any child enetity
  *
@@ -99,17 +244,35 @@ std_msgs::msg::Header generateHeaderMessage(
     const std::chrono::steady_clock::duration& _time);
 
 /**
- * @brief Get the X Y from Lat Long
+ * @brief Convert latitude/longitude/altitude to local XYZ (ENU metres).
  *
  * @param _ecm
- * @param lat
- * @param longi
- * @return std::optional<std::tuple<double, double>>
+ * @param lat degrees
+ * @param lon degrees
+ * @param alt altitude in metres (default 0)
+ * @return std::optional<std::tuple<double, double, double>> (x, y, z)
  */
-std::optional<std::tuple<double, double>> XYFromLatLong(
+std::optional<std::tuple<double, double, double>> LatLongToXY(
     const gz::sim::EntityComponentManager& _ecm,
     double lat,
-    double longi);
+    double lon,
+    double alt = 0.0);
+
+/**
+ * @brief Convert local XYZ (ENU metres) to latitude/longitude/altitude.
+ *
+ * @param _ecm Entity Component Manager used to retrieve spherical coordinates
+ * @param x Local X coordinate in metres
+ * @param y Local Y coordinate in metres
+ * @param z Local Z coordinate in metres (default 0)
+ * @return std::optional<std::tuple<double, double, double>> (lat deg, lon deg,
+ * alt metres), or std::nullopt if spherical coordinates are unavailable
+ */
+std::optional<std::tuple<double, double, double>> XYToLatLong(
+    const gz::sim::EntityComponentManager& _ecm,
+    double x,
+    double y,
+    double z = 0.0);
 
 /**
  * @brief Get the SDF Element with case insensitive name
@@ -129,6 +292,28 @@ sdf::ElementPtr getElementCaseInsensitive(
  * @return std::string
  */
 std::string toUpper(std::string str);
+
+/**
+ * @brief Convert radians to degrees
+ *
+ * @param rad angle in radians
+ * @return double angle in degrees
+ */
+inline double radToDeg(double rad)
+{
+    return rad * (180.0 / M_PI);
+}
+
+/**
+ * @brief Convert degrees to radians
+ *
+ * @param deg angle in degrees
+ * @return double angle in radians
+ */
+inline double degToRad(double deg)
+{
+    return deg * (M_PI / 180.0);
+}
 
 }  // namespace lotusim::common
 #endif  // COMMON_HPP

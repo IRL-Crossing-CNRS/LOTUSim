@@ -229,6 +229,14 @@ void LotusimSensorPlugin::PostUpdate(
     if (!_info.paused) {
         m_current_time = _info.simTime;
         for (auto& [entity, sensor] : m_entity_sensor_map) {
+            // check power state registry set by SensorPowerConsumer::update()
+            // which runs in PowerManagerInstance::Update() before PostUpdate()
+            // default true: if no power manager exists, sensor always runs
+            const std::string key =
+                sensor->vesselName() + "/" + sensor->sensorName();
+            if (!common::PowerStateRegistry::instance().get(key, true)) {
+                continue;
+            }
             auto world_pos = gz::sim::worldPose(entity, _ecm);
             sensor->Position(world_pos.Pos());
             sensor->Orientation(world_pos.Rot());
@@ -307,12 +315,12 @@ bool LotusimSensorPlugin::EachNew(
                 _entity,
                 model_name,
                 sensor_name);
-        } else if (type == "battery") {
+        } else if (type == "sector_scanner") {
             m_logger->info(
-                "LotusimSensorPlugin::Battery: Creating sensor [{}/{}]",
+                "LotusimSensorPlugin::SectorScanner: Creating sensor [{}/{}]",
                 model_name,
                 sensor_name);
-            sensor = CreateSensor<BatterySensor>(
+            sensor = CreateSensor<SectorScanner>(
                 data,
                 model_entity,
                 _entity,
@@ -320,18 +328,6 @@ bool LotusimSensorPlugin::EachNew(
                 sensor_name);
         } else {
             return true;
-        }
-        auto child_link = m_ecm->ChildrenByComponents(
-            model_entity,
-            gz::sim::components::Link());
-        for (auto&& link : child_link) {
-            auto name_opt = m_ecm->Component<gz::sim::components::Name>(link);
-            if (name_opt &&
-                name_opt->Data().find("base_link") != std::string::npos) {
-                gz::sim::Link _link(link);
-                _link.EnableVelocityChecks(*m_ecm);
-                break;
-            }
         }
 
         m_entity_sensor_map.insert(std::make_pair(_entity, std::move(sensor)));

@@ -13,7 +13,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 if(LOTUS_TIDY)
-  set(CMAKE_CXX_CLANG_TIDY 
+  set(CMAKE_CXX_CLANG_TIDY
     "clang-tidy;-checks=-*,clang-analyzer-*,modernize-*,performance-*,hicpp-*,concurrency-*,bugprone-*,portability-*,cppcoreguidelines-*;-header-filter=.*")
 endif()
 
@@ -37,7 +37,9 @@ find_package(lotusim_common REQUIRED)
 find_package(lotusim_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(Boost REQUIRED COMPONENTS system)
+# Boost.System is header-only since 1.69 and BoostConfig.cmake ships no
+# boost_system component, so requesting it fails once CMP0167 drops FindBoost.
+find_package(Boost REQUIRED)
 find_package(websocketpp REQUIRED)
 
 find_package(gz-cmake3 REQUIRED)
@@ -50,13 +52,11 @@ gz_find_package(gz-plugin2 REQUIRED COMPONENTS loader register)
 # Library
 #============================================================================
 add_library(physics_interface_plugin SHARED
-src/physics_interface_plugin.cpp
+  src/physics_interface_base.cpp
+  src/physics_interface_plugin.cpp
   src/xdyn_websocket.cpp
   src/ros2_interface.cpp
-  src/kinematic_interface.cpp
-  src/ocean_current_feed.cpp
-  src/gauss_markov_current.cpp
-  src/copernicus_current.cpp
+  src/vessel_information.cpp
 )
 
 target_include_directories(physics_interface_plugin PUBLIC
@@ -68,7 +68,7 @@ target_link_libraries(physics_interface_plugin
   gz-sim8::gz-sim8
   gz-plugin2::gz-plugin2
   websocketpp::websocketpp
-  Boost::system
+  Boost::boost
   yaml-cpp
 )
 
@@ -98,6 +98,44 @@ install(
   RUNTIME DESTINATION bin
   INCLUDES DESTINATION include
 )
+
+#============================================================================
+# Testing
+#============================================================================
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  # A second, test-only compilation of vessel_information.cpp to test conversion logic only
+  add_library(vessel_information_test STATIC
+    src/vessel_information.cpp
+  )
+
+  target_include_directories(vessel_information_test PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  )
+
+  target_link_libraries(vessel_information_test
+    gz-sim8::gz-sim8
+  )
+
+  ament_target_dependencies(vessel_information_test
+    lotusim_common
+  )
+
+  # Unit tests on the NED<->ENU conversions (pure functions living in
+  # vessel_information.cpp). SKIP_LINKING_MAIN_LIBRARIES: the test provides
+  # its own main() that calls _Exit() instead of returning (see
+  # test_vessel_information.cpp for why).
+  ament_add_gtest(test_ned_enu_conversions test/test_vessel_information.cpp
+    SKIP_LINKING_MAIN_LIBRARIES
+  )
+  if(TARGET test_ned_enu_conversions)
+    target_link_libraries(test_ned_enu_conversions
+      vessel_information_test
+      gz-sim8::gz-sim8
+    )
+  endif()
+endif()
 
 #============================================================================
 # Export

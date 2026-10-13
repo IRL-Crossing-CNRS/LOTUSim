@@ -1,89 +1,62 @@
 # Contributing to LOTUSim
 
-LOTUSim aims to foster research, experimentation, and interoperability in the field of multi-agent simulation.
-
 This document explains how to contribute to the LOTUSim project.
 
-Each contribution must be under EPL2.0 license.
+## Guardrails
 
-## LOTUSim Governance Committee
+A few points of scope are worth stating here, as they shape what fits the project.
 
-The LOTUSim Governance Committee, established within Naval Group, oversees the overall coherence of the project’s developments.
+- **Proprietary names.** Contributions must not expose the names of proprietary platforms or sensors without agreement. Respect each organisation's wishes about being named or not - some choose to be credited, others do not.
+- **AI-generated code.** Treat it with care. Understand, review and verify what you submit. Do not pour in thousands of lines doing forty things at once - one focused change at a time.
 
-The committee ensures:
+This is a guardrail for a project that means to stay open and modular, not an exhaustive rulebook. Strong rationale and strong community demand can move it.
 
-- The publication of a biannual roadmap highlighting priority topics and features. The first roadmap will be available in early 2026.
-
-- The review, acceptance and integration of community contributions,
-
-- The publication of biannual release including the validated contributions.
-
-In the future, the committee may include external personas such as key partners or major contributors.
-
-## LOTUSim Roadmap
-
-The biannual LOTUSim roadmap is based on:
-
-- Internal needs within Naval Group,
-
-- Partner priorities,
-
-- Community-driven contributions.
-
-For roadmap-related question, please contact the [Product Owner](estelle.chauveau@naval-group.com).
-
-## How to Contribute
-
+## Types of Contributions
 You can contribute in several ways:
 
 - New features – e.g. new algorithmic modules for platform guidance.
-
 - New models – for platforms, sensors, or environments.
-
-- Enhancements – improving existing functions, models, documentation.
-
+- Enhancements – improving existing functions or models.
 - Data contributions – use cases, simulation scenarios, or datasets.
+- Bug fixes – code corrections, refactoring, or readability/maintainability improvements.
 
-- Bug fixes – code corrections, refactoring, or maintainability improvements.
+## Contribution Process
 
-### Contribution process
+Please follow this process to propose changes:
 
 1. Create an Issue
 
-    - If none exists, open one on GitHub.
-
+    - If none exists, open an issue on GitHub.
     - Use one of the following labels: new_feature, new_model, enhancement, data, or bugfix.
-
-    - Clearly describe your proposal, including its objectives, use cases, scientific background, and references (if relevant).
-
-    - Specify how your contribution aligns with the LOTUSim roadmap.
+    - Clearly describe your proposal, including objectives, use cases, scientific background, and references if relevant.
 
 2. Announce Your Work
 
-    - In the issue comments, indicate that you plan to work on it and briefly describe your proposed solution or approach.
+    - In the issue comments, indicate that you plan to work on it.
+    - Briefly describe your proposed solution or approach.
 
-3. Fork and Implement
+3. Fork and Clone the Repository
 
-    - Fork the LOTUSim repository and implement your changes.
+    - Fork LOTUSim and clone it locally.
+    - Implement your changes.
 
 4. Test and Validate
 
-    - Ensure your code passes all tests and meets projects requirements.
+    - Ensure your code passes all tests and complies with the pipeline requirements (coming soon).
 
-    - A dedicated testing guide will be available soon in the README.
+5. Push to a Dedicated Branch
 
-5. Submit a Pull Request
+    - Push your changes to your fork.
+    - Use a dedicated branch (e.g., feature/my-feature) to facilitate feedback and updates.
 
-    - Open a pull request referencing the related issue.
+6. Submit a Pull Request
 
-    - Clearly explain the purpose and scope of your changes.
+    - Open a pull request.
+    - Clearly reference the related issue and describe the implemented changes.
 
-## Pull Request Review and integration
+## Review and Integration
 
-Depending on its type, a pull request:
+All pull requests are reviewed by maintainers and, if relevant, by the LOTUSim Governance Committee.
+Feedback may include requests for clarification, documentation, or code improvements.
 
-- may be directly accepted by the maintainers (expected feedback within 1 month), or escalated to the LOTUSim Governance Committee (feedback within 6 months).
-
-If not directly accepted, feedback may include requests for clarification, documentation, or code improvements.
-
-Once approved, your contribution will be merged into the main branch and included in the next release.
+Once approved, your contribution will be merged into the main branch and included in the next release according to the [project roadmap](VISION.md#current-focus).

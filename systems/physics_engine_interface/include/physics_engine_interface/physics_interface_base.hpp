@@ -20,22 +20,21 @@
 
 #include "lotusim_common/common.hpp"
 #include "lotusim_common/logger.hpp"
+#include "physics_engine_interface/vessel_information.hpp"
 
 namespace lotusim::gazebo {
 
-enum class ConnectionType
+enum class InterfaceType
 {
     XDynWebSocket,
     ROS2Interface,
-    Kinematic,
     Unknown
 };
 
-static std::unordered_map<std::string, ConnectionType> ConnectionTypeMap{
-    {"XDYNWEBSOCKET", ConnectionType::XDynWebSocket},
-    {"ROS2", ConnectionType::ROS2Interface},
-    {"KINEMATIC", ConnectionType::Kinematic},
-    {"UNKNOWN", ConnectionType::Unknown}};
+static std::unordered_map<std::string, InterfaceType> InterfaceTypeMap{
+    {"XDYNWEBSOCKET", InterfaceType::XDynWebSocket},
+    {"ROS2", InterfaceType::ROS2Interface},
+    {"UNKNOWN", InterfaceType::Unknown}};
 
 enum class DomainType
 {
@@ -46,10 +45,10 @@ enum class DomainType
 };
 
 static std::unordered_map<std::string, DomainType> DomainTypeMap{
-    {"Aerial", DomainType::Aerial},
-    {"Surface", DomainType::Surface},
-    {"Underwater", DomainType::Underwater},
-    {"Unknown", DomainType::Unknown}};
+    {"AERIAL", DomainType::Aerial},
+    {"SURFACE", DomainType::Surface},
+    {"UNDERWATER", DomainType::Underwater},
+    {"UNKNOWN", DomainType::Unknown}};
 
 static std::unordered_map<DomainType, std::string> DomainTypeToStringMap{
     {DomainType::Aerial, "Aerial"},
@@ -58,23 +57,10 @@ static std::unordered_map<DomainType, std::string> DomainTypeToStringMap{
     {DomainType::Unknown, "Unknown"}};
 
 /**
- * @brief Struct to hold vessel information in ENU frame
- *
- */
-struct VesselInformation {
-    double time;
-    gz::sim::Entity entity;
-    gz::math::Pose3d pose;
-    gz::math::Vector3d lin_vel;
-    gz::math::Vector3d ang_vel;
-};
-
-/**
  * @brief Base class for the different physics server interface.
  * It is reponsible for interfacing with the physics engine of your choice. It
  * is also responsible for subscribing to the thruster commands your engine
  * takes
- * The model must have a link named base_link
  */
 class PhysicsInterfaceBase {
 public:
@@ -89,12 +75,93 @@ public:
     virtual ~PhysicsInterfaceBase() = default;
 
     /**
+     * @brief Factory method create a Derived Interface class object
+     *
+     * @param entity
+     * @param model_name
+     * @param protocol_type
+     * @param sdf
+     * @param cmd
+     * @param logger
+     * @param domain_type
+     * @return std::shared_ptr<PhysicsInterfaceBase>
+     */
+    static std::shared_ptr<PhysicsInterfaceBase> createInterface(
+        const InterfaceType& protocol_type,
+        std::shared_ptr<std::unordered_map<gz::sim::Entity, std::string>> cmd,
+        std::shared_ptr<spdlog::logger> logger);
+
+    /**
+     * @brief Configure Interface upon creation
+     *
+     * @param entity
+     * @param model_name
+     * @param protocol_type
+     * @param sdf
+     * @param domain_type
+     * @return true
+     * @return false
+     */
+    virtual bool configureInterface(
+        const gz::sim::Entity& entity,
+        const std::string& model_name,
+        const sdf::ElementPtr sdf,
+        const DomainType& domain_type = DomainType::Unknown) = 0;
+
+    /**
+     * @brief Model will be deleted and interface to be deactivated and
+     * destroyed
+     *
+     * @param _entity
+     * @param domain_type Optional
+     * @return true
+     * @return false
+     */
+    virtual bool removeInterface(
+        const gz::sim::Entity& _entity,
+        const DomainType& domain_type = DomainType::Unknown)
+    {
+        return true;
+    };
+
+    /**
+     * @brief Activate the Interface to be used
+     *
+     * @param _entity
+     * @param domain_type Optional
+     * @return true
+     * @return false
+     */
+    virtual bool activateInterface(
+        const gz::sim::Entity& _entity,
+        const DomainType& domain_type = DomainType::Unknown) = 0;
+
+    /**
+     * @brief Close the Interface when vessel transit
+     * Interface must deactivate. Failure to deactivate must be handled on
+     * interface level
+     *
+     * Interface must be able to be activated again in the future and not be
+     * destroyed. Freeing of interface object is done by removeInterface or
+     * garbage collector
+     *
+     * @param _entity
+     * @param domain_type Optional
+     * @return true
+     * @return false
+     */
+    virtual bool deactivateInterface(
+        const gz::sim::Entity& _entity,
+        const DomainType& domain_type = DomainType::Unknown) = 0;
+
+    /**
      * @brief Get the New State object
      *
-     * @param name
-     * @param VesselInformation  Vessel state information
-     * @param time_dif In milliseconds to forward calculate future state
-     * @return
+     * @param _entity
+     * @param previous_state
+     * @param time_dif
+     * @return std::optional<std::tuple<VesselInformation, DomainType>> New
+     * state update of model and the next domain
      */
     virtual std::optional<std::tuple<VesselInformation, DomainType>>
     getNewState(
@@ -103,55 +170,15 @@ public:
         float time_dif) = 0;
 
     /**
-     * @brief Create a Connection for the interface
-     *
-     * @param name
-     * @param thrusters_name
-     * @param uri
-     * @return true
-     * @return false
-     */
-    virtual bool createConnection(
-        const gz::sim::Entity& _entity,
-        const std::string& _name,
-        const sdf::ElementPtr _sdf) = 0;
-
-    /**
-     * @brief Remove Connection for this entity
+     * @brief Get the URI of the Interface
      *
      * @param _entity
-     * @return true
-     * @return false
-     */
-    virtual bool removeConnection(const gz::sim::Entity& _entity) = 0;
-
-    /**
-     * @brief Activate the connection to be used
-     *
-     * @param _entity
-     * @return true
-     * @return false
-     */
-    virtual bool activateConnection(const gz::sim::Entity& _entity) = 0;
-
-    /**
-     * @brief Close the connection when vessel transit
-     * Interface must deactivate. Failure to deactivate must be handled on
-     * interface level
-     *
-     * @param _entity
-     * @return true
-     * @return false
-     */
-    virtual bool deactivateConnection(const gz::sim::Entity& _entity) = 0;
-
-    /**
-     * @brief Get the URI of the connection
-     *
-     * @param _entity
+     * @param domain_type Optional
      * @return std::string
      */
-    virtual std::string getURI(const gz::sim::Entity& _entity) = 0;
+    virtual std::string getURI(
+        const gz::sim::Entity& _entity,
+        const DomainType& domain_type = DomainType::Unknown) = 0;
 
     /**
      * @brief Set the Logger object
@@ -166,7 +193,7 @@ public:
     void logEngineState(
         const VesselInformation& state,
         const DomainType& domain,
-        const std::string& vessel_name = "")
+        const std::string& model_name = "")
     {
         if (m_engine_logger) {
             std::string excelRow = fmt::format(
@@ -174,7 +201,7 @@ public:
                 DomainTypeToStringMap[domain],
                 state.time,
                 state.entity,
-                vessel_name,
+                model_name,
                 state.pose.X(),
                 state.pose.Y(),
                 state.pose.Z(),
@@ -195,7 +222,7 @@ public:
     void setSharedCmd(
         std::shared_ptr<std::unordered_map<gz::sim::Entity, std::string>> _cmd)
     {
-        m_vessels_cmd_map_ptr = _cmd;
+        m_models_cmd_map_ptr = _cmd;
     }
 
 protected:
@@ -211,7 +238,7 @@ protected:
      *
      */
     std::shared_ptr<std::unordered_map<gz::sim::Entity, std::string>>
-        m_vessels_cmd_map_ptr;
+        m_models_cmd_map_ptr;
 
     /**
      * @brief Physics engine logger in excel format to log the 9 D.O.F

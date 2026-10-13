@@ -42,12 +42,11 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(lotusim_common REQUIRED)
 find_package(lotusim_sensor_base REQUIRED)
-find_package(lotusim_msgs REQUIRED)
-find_package(lotusim_sensor_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(radar_msgs)
 find_package(Eigen3 REQUIRED)
 
-# Gazebo packages — exact same pattern as entity_manager
+# Gazebo packages — exact same pattern as lotusim_mas
 find_package(gz-cmake3 REQUIRED)
 set(GZ_CMAKE_VER ${gz-cmake3_VERSION_MAJOR})
 
@@ -78,7 +77,7 @@ target_include_directories(radar_sensor
   ${EIGEN3_INCLUDE_DIRS}
 )
 
-# target_link_libraries BEFORE ament_target_dependencies — same as entity_manager
+# target_link_libraries BEFORE ament_target_dependencies — same as lotusim_mas
 target_link_libraries(radar_sensor
   PUBLIC
   gz-sim${GZ_SIM_VER}::gz-sim${GZ_SIM_VER}
@@ -92,8 +91,7 @@ ament_target_dependencies(radar_sensor
   rclcpp
   lotusim_common
   lotusim_sensor_base
-  lotusim_msgs
-  lotusim_sensor_msgs
+  radar_msgs
   sensor_msgs
 )
 
@@ -125,8 +123,7 @@ ament_export_dependencies(
   rclcpp
   lotusim_common
   lotusim_sensor_base
-  lotusim_msgs
-  lotusim_sensor_msgs
+  radar_msgs
   sensor_msgs
   gz-sim8
   gz-msgs10

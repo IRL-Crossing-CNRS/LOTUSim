@@ -14,12 +14,10 @@
 #include <gz/common/Util.hh>
 #include <gz/plugin/Register.hh>
 #include <gz/sim/EntityComponentManager.hh>
-#include <gz/sim/Link.hh>
 #include <gz/sim/System.hh>
 #include <gz/sim/Util.hh>
 #include <gz/sim/components/AngularVelocity.hh>
 #include <gz/sim/components/LinearVelocity.hh>
-#include <gz/sim/components/Link.hh>
 #include <gz/sim/components/Model.hh>
 #include <gz/sim/components/Name.hh>
 #include <gz/sim/components/ParentEntity.hh>
@@ -37,11 +35,7 @@
 
 #include "lotusim_msgs/msg/vessel_cmd.hpp"
 #include "lotusim_msgs/msg/vessel_cmd_array.hpp"
-#include "physics_engine_interface/kinematic_interface.hpp"
-#include "physics_engine_interface/ocean_current_feed.hpp"
 #include "physics_engine_interface/physics_interface_base.hpp"
-#include "physics_engine_interface/ros2_interface.hpp"
-#include "physics_engine_interface/xdyn_websocket.hpp"
 
 namespace lotusim::gazebo {
 
@@ -79,18 +73,18 @@ namespace lotusim::gazebo {
  *  <lotus_param>
  *   <physics_engine_interface>
  *    <aerial>
- *      <connection_type>XDynWebSocket</connection_type>
+ *      <interface_type>XDynWebSocket</interface_type>
  *      <uri>127.0.0.1:1234</uri>
  *      <thrusters>
  *        <thruster1>propeller1</thruster1>
  *      </thrusters>
  *    </aerial>
  *    <surface>
- *      <connection_type>XDynGRPC</connection_type>
+ *      <interface_type>XDynGRPC</interface_type>
  *      <uri>127.0.0.1:1235</uri>
  *    </surface>
  *    <underwater>
- *      <connection_type>Manual</connection_type>
+ *      <interface_type>Manual</interface_type>
  *      <uri>127.0.0.1:1236</uri>
  *    </underwater>
  *    <init_state>Surface</init_state>
@@ -126,7 +120,7 @@ private:
      * @param domain
      * @param interface_map
      */
-    void createDomainConnection(
+    void createDomainInterface(
         const gz::sim::Entity& entity,
         const std::string& vessel_name,
         sdf::ElementPtr physics_sdf,
@@ -141,14 +135,14 @@ private:
      *
      * @param entity Entity ID
      * @param name Vessel name
-     * @param protocol_type Connection protocol type
+     * @param protocol_type Interface protocol type
      * @param sdf SDF configuration element
      * @return std::shared_ptr<PhysicsInterfaceBase>
      */
-    std::shared_ptr<PhysicsInterfaceBase> createConnection(
+    std::shared_ptr<PhysicsInterfaceBase> createInterface(
         const gz::sim::Entity& entity,
         const std::string& name,
-        const ConnectionType& protocol_type,
+        const InterfaceType& protocol_type,
         const sdf::ElementPtr sdf);
 
     /**
@@ -171,7 +165,7 @@ private:
      * @return true if transition successful
      * @return false otherwise
      */
-    bool vesselTransition(gz::sim::Entity _vessel, DomainType _new_mode);
+    bool vesselDomainTransition(gz::sim::Entity _vessel, DomainType _new_mode);
 
     /**
      * @brief Handle vessel creation
@@ -233,13 +227,11 @@ private:
     mutable std::shared_mutex m_mutex;
 
     /**
-     * @brief Mutex serialising EntityComponentManager access.
+     * @brief Serialises EntityComponentManager access.
      *
-     * The vessel updates run concurrently (std::async per vessel) to overlap
-     * slow physics back-ends (e.g. XDyn websocket). The gz-sim ECM is NOT
-     * thread-safe for concurrent reads/writes, so every ECM read and write must
-     * be serialised through this mutex. Only the back-end getNewState() call —
-     * which works on a local copy and does not touch the ECM — runs in parallel.
+     * The ECM is not thread-safe and the per-model updates run concurrently,
+     * so its reads and writes are taken under this lock while the physics step
+     * itself stays parallel.
      */
     std::mutex m_ecm_mutex;
 
@@ -248,12 +240,6 @@ private:
      *
      */
     std::vector<gz::sim::Entity> m_vessels_entities;
-
-    /**
-     * @brief Mapping for vessel name to base_link entity
-     *
-     */
-    std::unordered_map<std::string, gz::sim::Entity> m_vessels_base_link_map;
 
     /**
      * @brief Mapping for vessel name to the model entity
@@ -275,39 +261,11 @@ private:
         m_cmd_array_sub;
 
     /**
-     * @brief Optional fake ocean current feed (see ocean_current_feed.hpp for
-     * why this lives in its own class/file rather than inline here).
-     */
-    std::unique_ptr<OceanCurrentFeed> m_ocean_current_feed;
-
-    /**
-     * @brief Dedicated executor + thread servicing m_ros_node.
-     *
-     * rclcpp::spin_some() once per Update is not enough: it takes at most ONE
-     * message per subscription per call, so with a 0.1 s physics step the host
-     * would consume at most 10 commands/s while N remote agents publish
-     * N*20/s, overflowing the depth-10 queue and silently dropping commands
-     * (including a final full-stop). A spinning thread consumes every message
-     * on arrival; Update() then reads the freshest command.
-     */
-    rclcpp::executors::SingleThreadedExecutor::SharedPtr m_ros_executor;
-    std::shared_ptr<std::thread> m_ros_node_thread;
-
-    /**
-     * @brief Latest command per entity received by the spin thread, drained
-     * into m_vessels_cmd_map_ptr at the top of Update(). This keeps the shared
-     * command map single-threaded (mutated on the main thread, read by the
-     * per-vessel async updates after), exactly as before.
-     */
-    std::mutex m_pending_cmds_mutex;
-    std::unordered_map<gz::sim::Entity, std::string> m_pending_cmds;
-
-    /**
      * @brief Shared map of vessel entity to command string
      *
      */
     std::shared_ptr<std::unordered_map<gz::sim::Entity, std::string>>
-        m_vessels_cmd_map_ptr;
+        m_models_cmd_map_ptr;
 
     /**
      * @brief Current vessel interface connected

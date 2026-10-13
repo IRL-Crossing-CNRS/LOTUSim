@@ -19,6 +19,68 @@ bool pose3Eql(const gz::math::Pose3d& _a, const gz::math::Pose3d& _b)
            gz::math::equal(_a.Rot().W(), _b.Rot().W(), 1e-6);
 }
 
+gz::math::Quaterniond quatChangeFrame(
+    const gz::math::Quaterniond& q,
+    const gz::math::Matrix3d& worldC,
+    const gz::math::Matrix3d& bodyC)
+{
+    const gz::math::Matrix3d R(q);
+    // const gz::math::Matrix3d R_new = worldC.Inverse() * R * bodyC;  // worldC is self-inverse, so no need to call Inverse()
+    const gz::math::Matrix3d R_new = worldC * R * bodyC;
+    gz::math::Quaterniond q_new(R_new);
+    q_new.Normalize();
+    return q_new;
+}
+
+gz::math::Pose3d poseChangeFrame(
+    const gz::math::Pose3d& pose,
+    const gz::math::Matrix3d& worldC,
+    const gz::math::Matrix3d& bodyC)
+{
+    return gz::math::Pose3d(
+        // worldC.Inverse() * pose.Pos(), // worldC is self-inverse, so no need to call Inverse()
+        worldC * pose.Pos(),
+        quatChangeFrame(pose.Rot(), worldC, bodyC));
+}
+
+gz::math::Vector3d vecBodyChangeFrame(
+    const gz::math::Vector3d& v, const gz::math::Matrix3d& bodyC)
+{
+    // return bodyC.Inverse() * v;  // bodyC is self-inverse, so no need to call Inverse()
+    return bodyC * v;
+}
+
+gz::math::Vector3d pseudoVecBodyChangeFrame(
+    const gz::math::Vector3d& v, const gz::math::Matrix3d& bodyC)
+{
+    // return bodyC.Determinant() * (bodyC.Inverse() * v);
+    return bodyC.Determinant() * (bodyC * v);
+}
+
+gz::math::Vector3d worldVelToTargetBody(
+    const gz::math::Vector3d& v_world,
+    const gz::math::Quaterniond& q_world_attitude,
+    const gz::math::Matrix3d& bodyC,
+    bool isPseudoVector)
+{
+    const gz::math::Vector3d v_body_source =
+        q_world_attitude.RotateVectorReverse(v_world);
+    return isPseudoVector ? pseudoVecBodyChangeFrame(v_body_source, bodyC)
+                          : vecBodyChangeFrame(v_body_source, bodyC);
+}
+
+gz::math::Vector3d targetBodyVelToWorld(
+    const gz::math::Vector3d& v_body_target,
+    const gz::math::Quaterniond& q_world_attitude,
+    const gz::math::Matrix3d& bodyC,
+    bool isPseudoVector)
+{
+    const gz::math::Vector3d v_body_source =
+        isPseudoVector ? pseudoVecBodyChangeFrame(v_body_target, bodyC)
+                       : vecBodyChangeFrame(v_body_target, bodyC);
+    return q_world_attitude.RotateVector(v_body_source);
+}
+
 std::string getWorldName(const gz::sim::EntityComponentManager& _ecm)
 {
     std::string world_name = "";
@@ -73,14 +135,13 @@ std_msgs::msg::Header generateHeaderMessage(
     return msg;
 }
 
-std::optional<std::tuple<double, double>> XYFromLatLong(
+std::optional<std::tuple<double, double, double>> LatLongToXY(
     const gz::sim::EntityComponentManager& _ecm,
     double lat,
-    double lon)
+    double lon,
+    double alt)
 {
-    gz::math::Angle lat0, lon0;
     gz::sim::Entity worldEntity;
-    gz::math::SphericalCoordinates sphCoords;
     _ecm.Each<gz::sim::components::Name, gz::sim::components::World>(
         [&](const gz::sim::Entity& _entity,
             const gz::sim::components::Name*,
@@ -88,20 +149,48 @@ std::optional<std::tuple<double, double>> XYFromLatLong(
             worldEntity = _entity;
             return true;
         });
-    if (auto sphComp =
-            _ecm.Component<gz::sim::components::SphericalCoordinates>(
-                worldEntity)) {
-        lat0 = sphComp->Data().LatitudeReference();
-        lon0 = sphComp->Data().LongitudeReference();
+    auto sphComp =
+        _ecm.Component<gz::sim::components::SphericalCoordinates>(worldEntity);
+    if (sphComp == nullptr) {
+        return std::nullopt;
     }
-    sphCoords.SetLatitudeReference(lat0);
-    sphCoords.SetLongitudeReference(lon0);
-    sphCoords.SetElevationReference(0);
+    auto xyz = sphComp->Data().PositionTransform(
+        gz::math::Vector3d(degToRad(lat), degToRad(lon), alt),
+        gz::math::SphericalCoordinates::SPHERICAL,
+        gz::math::SphericalCoordinates::LOCAL2);
 
-    gz::math::Vector3d xyz =
-        sphCoords.LocalFromSphericalPosition(gz::math::Vector3d{lat, lon, 0});
+    return std::make_tuple(xyz.X(), xyz.Y(), xyz.Z());
+}
 
-    return std::make_tuple(xyz.X(), xyz.Y());
+std::optional<std::tuple<double, double, double>> XYToLatLong(
+    const gz::sim::EntityComponentManager& _ecm,
+    double x,
+    double y,
+    double z)
+{
+    gz::sim::Entity worldEntity;
+    _ecm.Each<gz::sim::components::Name, gz::sim::components::World>(
+        [&](const gz::sim::Entity& _entity,
+            const gz::sim::components::Name*,
+            const gz::sim::components::World*) -> bool {
+            worldEntity = _entity;
+            return true;
+        });
+    auto sphComp =
+        _ecm.Component<gz::sim::components::SphericalCoordinates>(worldEntity);
+    if (sphComp == nullptr) {
+        return std::nullopt;
+    }
+
+    auto latlon = sphComp->Data().PositionTransform(
+        gz::math::Vector3d(x, y, z),
+        gz::math::SphericalCoordinates::LOCAL2,
+        gz::math::SphericalCoordinates::SPHERICAL);
+
+    return std::make_tuple(
+        radToDeg(latlon.X()),
+        radToDeg(latlon.Y()),
+        latlon.Z());
 }
 
 sdf::ElementPtr getElementCaseInsensitive(
@@ -126,6 +215,25 @@ std::string toUpper(std::string str)
         return std::toupper(c);
     });
     return str;
+}
+
+PowerStateRegistry& PowerStateRegistry::instance()
+{
+    static PowerStateRegistry reg;
+    return reg;
+}
+
+void PowerStateRegistry::set(const std::string& key, bool powered)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_flags[key] = powered;
+}
+
+bool PowerStateRegistry::get(const std::string& key, bool defaultVal)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_flags.find(key);
+    return it != m_flags.end() ? it->second : defaultVal;
 }
 
 }  // namespace lotusim::common

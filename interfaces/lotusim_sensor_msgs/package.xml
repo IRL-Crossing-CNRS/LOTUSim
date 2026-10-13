@@ -4,9 +4,9 @@
   <version>0.0.1</version>
   <description>The lotusim_msgs msgs to bridge from gazebo to ros2 and the required plugins</description>
 
-  <maintainer email="malcom.neo@fe.naval-group.com">Malcom Neo</maintainer>
+  <maintainer email="malcom.neo@fe.naval-group.com">Malcom</maintainer>
 
-  <author email="malcom.neo@fe.naval-group.com">Malcom Neo</author>
+  <author email="malcom.neo@fe.naval-group.com">Malcom</author>
 
   <license>EPL-2.0</license>
 
@@ -17,6 +17,7 @@
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>geographic_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>message_generation</depend>
   <depend>action_msgs</depend>
 

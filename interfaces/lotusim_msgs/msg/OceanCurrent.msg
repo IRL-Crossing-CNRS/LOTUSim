@@ -1,2 +1,0 @@
-geometry_msgs/Vector3 linear_velocity
-bool enable_current

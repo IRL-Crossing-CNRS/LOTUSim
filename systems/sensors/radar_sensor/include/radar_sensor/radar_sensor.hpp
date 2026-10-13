@@ -21,8 +21,8 @@
 
 #include "lotusim_common/common.hpp"
 #include "lotusim_sensor_base/custom_sensor.hpp"
-#include "lotusim_sensor_msgs/msg/radar_detection.hpp"
-#include "lotusim_sensor_msgs/msg/radar_scan.hpp"
+#include "radar_msgs/msg/radar_return.hpp"
+#include "radar_msgs/msg/radar_scan.hpp"
 
 namespace lotusim::sensor {
 
@@ -39,6 +39,8 @@ struct RadarPSFParams {
                                ///< targets → bigger ellipse
     int grid_size{
         900};  ///< Image resolution in pixels (NxN). Python default: 900
+    double max_range{100.0};  ///< Minimum half-extent of the image in metres;
+                              ///< set larger to fix the scale
 };
 
 /**
@@ -163,6 +165,7 @@ private:
     RadarPSFParams m_psf;
 
     // ── ROS 2 publishers ─────────────────────────────────────────────────
+    rclcpp::Node::SharedPtr m_node;
 
     /// PSF-smeared radar display image → <vessel>/<sensor>/radar/image
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_radar_img_pub;
@@ -171,8 +174,7 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_lidar_img_pub;
 
     /// Structured polar detections → <vessel>/<sensor>/radar/detections
-    rclcpp::Publisher<lotusim_sensor_msgs::msg::RadarScan>::SharedPtr
-        m_radar_scan_pub;
+    rclcpp::Publisher<radar_msgs::msg::RadarScan>::SharedPtr m_radar_scan_pub;
 };
 
 }  // namespace lotusim::sensor
