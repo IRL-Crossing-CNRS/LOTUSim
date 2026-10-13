@@ -15,23 +15,24 @@ workspace, in Python.
 systems/        Gazebo system plugins (C++) -- the simulator's own behaviour
 interfaces/     ROS 2 message, service and action definitions
 assets/         models/ (SDF + xdyn YAML per vehicle) and worlds/ (.world)
-physics/        prebuilt xdyn binaries (xdyn, xdyn-for-cs, xdyn-for-me, libx-dyn.so)
-launch/         the `lotusim` CLI, its bash completion, install and entrypoint scripts
+scripts/        smoke test, GPU bridge wrapper, asset-path test
 docs/           this guide, coordinate_frames.md, Doxygen config, architecture images
-examples/       standalone examples (jupyter-python)
+examples/       standalone examples (C++, Python scripts, Jupyter)
+flake.nix       the toolchain, the `lotusim` command and the container image
+mise.toml       the developer tasks (build, test, sim, check, doc) and their environment
 ```
 
 ### The plugins in `systems/`
 
 | Plugin class | Package | Role |
 |---|---|---|
-| `EntityManager` | `entity_manager` | Spawns and deletes models on the `mas_cmd` / `mas_cmd_array` action, and republishes every entity's pose and twist on `/<world>/poses` |
-| `AerialEntityManager` | `aerial_demo_entity_manager` | The same service for the aerial world, which is a second Gazebo process |
+| `MultiAgentSystem` | `lotusim_mas` (`multi_agent_system_plugin`) | Spawns, moves and deletes models on the `mas_cmd` / `mas_cmd_array` actions, republishes every entity's pose on `/<world>/poses`, and runs the UI's YAML scenarios. See its [README](../systems/lotusim_mas/README.md) |
+| `AerialMAS` | `aerial_demo_entity_manager` (`aerial_demo_mas`) | A `MultiAgentSystem` subclass for the worlds that forward aerial vehicles to the aerial world, which is a second Gazebo process |
 | `PhysicsInterfacePlugin` | `physics_engine_interface` | The backend switch. Consumes `/<world>/vessel_cmd_array` and drives each vessel either through xdyn or through `KinematicInterface` |
 | `RenderPlugin` | `render_interface` | Streams poses to Unity over the TCP/UDP bridge |
 | `WindRegionsPlugin` | `wind_regions` | Applies a per-link aerodynamic force from `/aerialWorld/wind` and `/aerialWorld/wind/regions`. Full replacement for stock `gz-sim-wind-effects-system`, same `<enable_wind>` tag and same force approximation |
 | `WaypointFollowerPlugin` | `waypoint_follower` | Gazebo-side waypoint following, driven by the `SetWaypoints` service. Independent of the Python GNC pipeline |
-| `LotusimSensorPlugin` | `sensors/lotusim_sensor_plugin` | Sensor host plugin; individual sensors (AIS, battery, IMU, radar, subsea pressure) are separate packages under `systems/sensors/` |
+| `LotusimSensorPlugin` | `sensors/lotusim_sensor_plugin` | Sensor host plugin; individual sensors (AIS, battery, IMU, radar, sector scanner, subsea pressure) are separate packages under `systems/sensors/` |
 | `LightActuatorPlugin` | `actuators/light_actuator` | Example actuator plugin |
 
 ### Inside `physics_engine_interface`
@@ -42,7 +43,8 @@ the one most likely to surprise you.
 | File | Role |
 |---|---|
 | `physics_interface_plugin.cpp` | The Gazebo system: reads vessel commands, dispatches per vessel to xdyn or Kinematic, writes state back into the ECM |
-| `xdyn_websocket.cpp` | One websocket per xdyn-backed vessel. Sends state, receives forces. Also where an externally-computed current is injected, by a Galilean velocity shift: subtract before sending, add back on the reply |
+| `xdyn_websocket.cpp` | One websocket per xdyn-backed vessel. Sends state, receives the next state. Also where an externally-computed current is injected, by a Galilean velocity shift: subtract before sending, add back on the reply |
+| `vessel_information.cpp` | The state exchanged with each backend, and its conversion to xdyn's NED/FRD and to Unity's frame |
 | `gauss_markov_current.cpp` | First-order Gauss-Markov (OU) current process, injected through that shift |
 | `copernicus_current.cpp` | Replay of a measured Copernicus depth profile, same injection point, mutually exclusive with Gauss-Markov |
 | `kinematic_interface.cpp` | The no-physics backend: integrates a commanded `{u, w, vz}` and overwrites the model pose each step. Process-wide singleton, so it serves every Kinematic vehicle in any domain |
@@ -79,20 +81,20 @@ here means rebuilding both workspaces.
 ## 2. Building
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-lotusim clean_build
-source $HOME/lotusim_ws/install/setup.bash
+nix develop            # the toolchain: ROS 2, Gazebo, xdyn, colcon, mise
+mise run build         # colcon build --merge-install into ./install
+mise run test          # the gtest suite
+mise run sim --gui lotusim.world
 ```
 
-`lotusim` (in `launch/`) is the CLI wrapper: `install`, `clean`, `build`,
-`clean_build`, `doc`, `run [world]`, `ui`, with `--debug`, `--gui`,
-`--ws-path` and `--assets-path`. Use it rather than a bare `colcon build` —
-it sets the workspace and asset paths the plugins are looked up through.
+`mise tasks` lists the others (`check`, `doc`, `rebuild`, `lint:tidy`).
+`mise.toml` also sets `LOTUSIM_PATH`, `LOTUSIM_MODELS_PATH` and the Gazebo
+resource paths from the clone itself, so a build needs nothing exported in
+`~/.bashrc`.
 
-The xdyn binaries in `physics/` are prebuilt and committed; they are not
-built by this workspace. Rebuilding them is a separate exercise against the
-xdyn repository, and a rebuild is what a change to a physics model such as
-the Ekman current requires.
+xdyn is not built here and not committed: the devshell takes it from lxdyn's
+published image. A change to a physics model such as the Ekman current is a
+change to lxdyn.
 
 ## 3. Conventions that will bite you
 
@@ -100,13 +102,13 @@ the Ekman current requires.
   touching anything that moves. The invariant: every vehicle publishes its
   pose on `/<world>/poses` in world ENU with a body x-forward frame
   (REP-103), whatever the backend. xdyn works in NED/FRD, Unity in a
-  left-handed frame. The conversions are in `xdyn_websocket.cpp`, and a
+  left-handed frame. The conversions are in `vessel_information.cpp`, and a
   conversion applied to the wrong side (world basis vs. body basis) is a bug
   that looks like a plausible trajectory.
 - **The aerial world is a second Gazebo process.** `aerialWorld.world` is
   always launched alongside the scenario's own world, and its name is
-  hardcoded on both sides. Aerial entities are spawned through
-  `AerialEntityManager`, not the main `EntityManager`.
+  hardcoded on both sides. Aerial entities are forwarded there by
+  `AerialMAS`, not spawned by the main world's `MultiAgentSystem`.
 - **xdyn stalls on an incomplete command set.** If a vehicle's YAML declares
   actuator command keys, every step needs a complete command for them. A
   vehicle with no declared actuator drifts happily with no command at all;
@@ -119,7 +121,7 @@ the Ekman current requires.
 ## 4. Verifying a change
 
 Test through the scenario workspace's `scenario_launch.sh` or through
-`lotusim run`, never through a bare `gz sim`: a bare run bypasses the
+`lotusim run` / `mise run sim`, never through a bare `gz sim`: a bare run bypasses the
 orchestration, the spawn path and the physics bridge that the change most
 likely affects.
 
@@ -133,5 +135,5 @@ all produce a simulation that starts normally and is wrong a minute later.
 | Repository | Contains |
 |---|---|
 | `LOTUSim-generic-scenario` | Scenarios, agent classes, behaviour trees, the Python GNC pipeline |
-| `LOTUSim-Xdyn` | The xdyn hydrodynamic solver whose binaries are vendored in `physics/` |
+| `lxdyn` | The xdyn hydrodynamic solver, whose published image the devshell uses |
 | `LOTUSim-Unity-modules` | The Unity renderer that consumes `/<world>/poses` |

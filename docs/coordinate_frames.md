@@ -22,7 +22,11 @@ with a body x-forward frame (REP-103), regardless of physics backend.
 
 ## 2. Conversions along the pipeline
 
-### 2.1 xdyn <-> Gazebo (`systems/physics_engine_interface/src/xdyn_websocket.cpp`)
+### 2.1 xdyn <-> Gazebo (`systems/physics_engine_interface/src/vessel_information.cpp`)
+
+`XdynWebsocket` converts every state it exchanges with xdyn through
+`VesselInformation::to_xdyn()` and `VesselInformation::from_xdyn()`, which
+use the frame helpers of `lotusim_common` (`common.hpp`).
 
 An attitude maps body vectors to world vectors. A change of convention needs
 the world basis change on the left and the body basis change on the right:
@@ -31,23 +35,19 @@ the world basis change on the left and the body basis change on the right:
 R_enu_flu = M_world(NED->ENU) . R_ned_frd . M_body(FRD->FLU)^-1
 ```
 
-- `q_ned_to_enu` - world, 180 deg about (1,1,0)/sqrt(2)
-- `q_frd_to_flu` - body, 180 deg about body X
-
-```cpp
-quatNedToEnu(q) = q_ned_to_enu * q * q_frd_to_flu.Inverse();
-quatEnuToNed(q) = q_ned_to_enu.Inverse() * q * q_frd_to_flu;
-```
-
-- Conjugating by `q_ned_to_enu` alone (same rotation both sides) applies the
-  world map to the body frame too, putting xdyn's body x (forward) onto
-  Gazebo body y. That was the previous behavior and published yaw was 90 deg
-  off the x-forward convention `KinematicInterface` uses.
-- `vecNedToEnu`/`vecEnuToNed` are `{y, x, -z}`, world vectors only, unaffected
-  by this change.
-- Round trip `quatEnuToNed(quatNedToEnu(q)) == q` holds under both the old and
-  new formula, so xdyn receives back exactly the attitude it produced and the
-  body-frame velocities in `getNewState` are unchanged.
+- `common::kWorldEnuNed` - world basis change, swaps X and Y and flips Z
+- `common::kBodyFluFrd` - body basis change, flips Y and Z (180 deg about body X)
+- `common::poseChangeFrame(pose, kWorldEnuNed, kBodyFluFrd)` applies both to a
+  pose.
+- Velocities: xdyn's u,v,w and p,q,r are BODY frame, the ECM's are WORLD
+  frame. `worldVelToTargetBody` and `targetBodyVelToWorld` rotate them, with
+  the angular velocity handled as a pseudo-vector.
+- Conjugating by the world change alone (same rotation both sides) would apply
+  the world map to the body frame too, putting xdyn's body x (forward) onto
+  Gazebo body y. Both changes are needed.
+- A plugin-side current (Gauss-Markov, or a replayed measured profile) is
+  subtracted from the world velocity before the conversion, so xdyn steps on
+  the velocity relative to the water, and added back to the state it returns.
 
 ### 2.2 Kinematic vehicles (`systems/physics_engine_interface/src/kinematic_interface.cpp`)
 
@@ -65,7 +65,8 @@ ECM pose is copied into `VesselPosition` unchanged. No conversion.
 
 ### 2.4 ENU -> NED for control (`lotusim_sdk/control/frames.py`)
 
-`enu_quat_to_ned_euler` inverts 2.1 and must be kept in step with it:
+`enu_quat_to_ned_euler` inverts the attitude change of 2.1 and must be kept in
+step with it:
 
 ```python
 q_ned = q_ned_to_enu^-1 * q_enu * q_frd_to_flu

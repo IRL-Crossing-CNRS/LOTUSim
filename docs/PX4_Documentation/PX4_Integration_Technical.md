@@ -35,8 +35,8 @@ Responsibilities:
 
 - Gazebo worlds
 - Gazebo models
-- EntityManager plugin
-- AerialEntityManager forwarding plugin
+- MultiAgentSystem plugin
+- AerialMAS forwarding plugin
 - RenderPlugin and Unity-facing ROS messages
 - Gazebo physics, sensor, and motor plugin support
 
@@ -110,7 +110,7 @@ flowchart LR
     Scenario[simulation_run]
     X500[X500 Agent]
     MainWorld[defenseScenarioPx4Forwarded]
-    AerialBridge[AerialEntityManager]
+    AerialBridge[AerialMAS]
     AerialWorld[aerialPx4World]
     Drone[x5000 / x500_px4]
     PX4[PX4 SITL]
@@ -343,7 +343,7 @@ assets/worlds/defenseScenarioPx4Forwarded.world
 It contains:
 
 ```xml
-<plugin filename="aerial_demo_entity_manager" name="lotusim::gazebo::AerialEntityManager">
+<plugin filename="aerial_demo_mas" name="lotusim::gazebo::AerialMAS">
     <aerial_namespace>aerialPx4World</aerial_namespace>
 </plugin>
 ```
@@ -353,7 +353,7 @@ This tells the main world where aerial spawn commands should be forwarded.
 The forwarding logic is in:
 
 ```text
-systems/aerial_demo_entity_manager/src/aerial_entity_manager.cpp
+systems/aerial_demo_entity_manager/src/aerial_mas.cpp
 ```
 
 It creates an action client to:
@@ -366,7 +366,7 @@ Then forwards the original MAS command:
 
 ```cpp
 aerial_goal_msg.cmd = msg;
-m_aerial_entity_manager_client->async_send_goal(
+m_aerial_mas_client->async_send_goal(
     aerial_goal_msg,
     send_goal_options);
 ```
@@ -376,7 +376,7 @@ So the spawn path is:
 ```text
 Generic Scenario X500 agent
   -> /defenseScenario/mas_cmd
-  -> AerialEntityManager
+  -> AerialMAS
   -> /aerialPx4World/mas_cmd
   -> x5000 created in aerialPx4World
 ```
