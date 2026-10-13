@@ -189,14 +189,17 @@ def rewrite_links(dest: Path, url: str, ref: str):
 
 
 def write_message_reference(core_root: Path):
-    """One page per interface package, listing every message definition."""
+    """One page per interface package, listing every message definition: the
+    "ROS 2 custom messages" section of the site."""
     out = OUT / "reference"
     out.mkdir(parents=True, exist_ok=True)
     pages = []
     for pkg in sorted((core_root / "interfaces").iterdir()):
         if not pkg.is_dir():
             continue
-        lines = [f"# {pkg.name}", ""]
+        lines = [f"# {pkg.name}", "",
+                 f"The ROS 2 messages, services and actions of the `{pkg.name}` package, "
+                 "as their definition files declare them.", ""]
         for kind in ("msg", "srv", "action"):
             files = sorted((pkg / kind).glob(f"*.{kind}")) if (pkg / kind).is_dir() else []
             if not files:

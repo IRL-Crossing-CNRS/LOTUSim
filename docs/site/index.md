@@ -176,20 +176,15 @@ Jupyter examples <_collected/core/examples/jupyter-python/README>
 ```
 
 ```{toctree}
-:caption: Architecture
+:caption: Unity
 :hidden:
 
-Core simulator <_collected/core/docs/DEVELOPER>
-Coordinate frames <_collected/core/docs/coordinate_frames>
-Scenario workspace <_collected/scenario/doc/ARCHITECTURE>
-Scenario workspace: developer guide <_collected/scenario/doc/DEVELOPER>
-Navigation, guidance & control <_collected/scenario/doc/GNC_MODULAR_ARCHITECTURE>
-Wind and wake <_collected/scenario/doc/WAKE_EFFECT>
-Diagrams <_collected/scenario/doc/DIAGRAMS>
+Unity project <_collected/unity/README>
+Unity troubleshooting <unity-troubleshooting>
 ```
 
 ```{toctree}
-:caption: PX4
+:caption: PX4 (aerial drones)
 :hidden:
 
 PX4 integration <_collected/core/docs/PX4_Documentation/PX4_Integration_Technical>
@@ -199,14 +194,20 @@ PX4 path vs ROS waypoints <_collected/core/docs/PX4_Documentation/AUTONAV_PX4_VS
 ```
 
 ```{toctree}
-:caption: Unity
+:caption: Architecture (developers)
 :hidden:
 
-Unity project <_collected/unity/README>
+Core simulator <_collected/core/docs/DEVELOPER>
+Scenario workspace <_collected/scenario/doc/ARCHITECTURE>
+Scenario workspace: developer guide <_collected/scenario/doc/DEVELOPER>
+Coordinate frames <_collected/core/docs/coordinate_frames>
+Navigation, guidance & control <_collected/scenario/doc/GNC_MODULAR_ARCHITECTURE>
+Wind and wake <_collected/scenario/doc/WAKE_EFFECT>
+Diagrams <_collected/scenario/doc/DIAGRAMS>
 ```
 
 ```{toctree}
-:caption: Reference
+:caption: ROS 2 custom messages
 :hidden:
 :glob:
 
