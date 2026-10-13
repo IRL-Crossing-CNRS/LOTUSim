@@ -31,9 +31,10 @@ OceanCurrentFeed::OceanCurrentFeed(const rclcpp::Node::SharedPtr& node)
             // ignore the topic.
             RCLCPP_INFO_ONCE(
                 node->get_logger(),
-                "ocean_current applies to Kinematic entities only; xdyn vessels "
-                "take their current from their own YAML environment models or "
-                "the Gauss-Markov/Copernicus injection point.");
+                "ocean_current applies to Kinematic entities only, aerial ones "
+                "excepted; xdyn vessels take their current from their own YAML "
+                "environment models or the Gauss-Markov/Copernicus injection "
+                "point.");
         });
 }
 

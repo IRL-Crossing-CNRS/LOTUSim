@@ -107,9 +107,9 @@ public:
      * vessel's position update, in addition to its own commanded velocity.
      *
      * Fed by PhysicsInterfacePlugin from the `ocean_current` ROS topic. This
-     * is a fake/uniform current (no depth or spatial variation) meant to
-     * perturb Kinematic-connected vehicles and props (e.g. mines) without
-     * requiring xdyn.
+     * is a uniform current (no depth or spatial variation) meant to perturb
+     * Kinematic-connected vehicles and props (e.g. mines) without requiring
+     * xdyn. Aerial entities are exempt.
      */
     void setCurrent(double x, double y);
 

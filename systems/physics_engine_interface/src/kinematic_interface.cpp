@@ -121,10 +121,13 @@ KinematicInterface::getNewState(
     const double yaw = previous_state.pose.Yaw();
 
     // World-frame (ENU) ocean current, added on top of the commanded body-
-    // frame velocity: a fake, uniform drift applied to every kinematic
-    // vessel (and thruster-less props such as mines) regardless of domain.
-    const double cx = m_current_x.load(std::memory_order_relaxed);
-    const double cy = m_current_y.load(std::memory_order_relaxed);
+    // frame velocity: a uniform drift applied to every kinematic vessel and
+    // to thruster-less props such as mines. Aerial entities are exempt — an
+    // ocean current has nothing to push on a vehicle that is in the air, and
+    // applying it there drifts a drone sideways for no physical reason.
+    const bool in_water = domain != DomainType::Aerial;
+    const double cx = in_water ? m_current_x.load(std::memory_order_relaxed) : 0.0;
+    const double cy = in_water ? m_current_y.load(std::memory_order_relaxed) : 0.0;
 
     gz::math::Pose3d pose = previous_state.pose;
     pose.SetX(pose.X() + (u * std::cos(yaw) + cx) * dt_s);
