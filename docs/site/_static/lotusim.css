@@ -201,3 +201,85 @@ h1, h2, h3 {
   height: 100%;
   border: 0;
 }
+
+/* "On this page": the table of contents collect.py puts at the top of long
+   pages. */
+nav.contents.local {
+  margin: 1.2rem 0 1.6rem;
+  padding: 0.8rem 1.2rem 0.6rem;
+  border-left: 3px solid var(--color-brand-content);
+  background: var(--color-background-secondary);
+  border-radius: 0 8px 8px 0;
+}
+nav.contents.local .topic-title {
+  margin: 0 0 0.4rem;
+  font-weight: 700;
+}
+nav.contents.local ul {
+  margin: 0;
+  padding-left: 1.2em;
+}
+nav.contents.local li > p {
+  margin: 0.1rem 0;
+}
+
+/* Long pages without numbers of their own (collect.py marks them) get their
+   sections numbered here, in the headings and in "On this page" alike: the
+   heading text, and every anchor made from it, stays as written. */
+article:has(.lotusim-numbered) {
+  counter-reset: lotusim-h2;
+}
+article:has(.lotusim-numbered) section > h2 {
+  counter-increment: lotusim-h2;
+  counter-reset: lotusim-h3;
+}
+article:has(.lotusim-numbered) section > h3 {
+  counter-increment: lotusim-h3;
+}
+article:has(.lotusim-numbered) section > h2::before {
+  content: counter(lotusim-h2) ". ";
+}
+article:has(.lotusim-numbered) section > h3::before {
+  content: counter(lotusim-h2) "." counter(lotusim-h3) " ";
+}
+article:has(.lotusim-numbered) nav.contents.local > ul {
+  counter-reset: lotusim-toc1;
+  list-style: none;
+  padding-left: 0;
+}
+article:has(.lotusim-numbered) nav.contents.local > ul > li {
+  counter-increment: lotusim-toc1;
+}
+article:has(.lotusim-numbered) nav.contents.local > ul > li > p > a::before {
+  content: counter(lotusim-toc1) ". ";
+}
+article:has(.lotusim-numbered) nav.contents.local > ul > li > ul {
+  counter-reset: lotusim-toc2;
+  list-style: none;
+}
+article:has(.lotusim-numbered) nav.contents.local > ul > li > ul > li {
+  counter-increment: lotusim-toc2;
+}
+article:has(.lotusim-numbered) nav.contents.local > ul > li > ul > li > p > a::before {
+  content: counter(lotusim-toc1) "." counter(lotusim-toc2) " ";
+}
+
+/* The same numbers in Furo's "On this page" column. */
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul {
+  counter-reset: lotusim-side1;
+}
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li {
+  counter-increment: lotusim-side1;
+}
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > a::before {
+  content: counter(lotusim-side1) ". ";
+}
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > ul {
+  counter-reset: lotusim-side2;
+}
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > ul > li {
+  counter-increment: lotusim-side2;
+}
+body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > ul > li > a::before {
+  content: counter(lotusim-side1) "." counter(lotusim-side2) " ";
+}

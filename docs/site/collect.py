@@ -210,9 +210,10 @@ def write_message_reference(core_root: Path):
 
 
 # Sections the repositories repeat in their README for GitHub readers: the
-# videos and citations are on the home page, and the list of documentation
-# pages is the site's own menu.
-SHARED_SECTIONS = re.compile(r"^(videos?|relevant publications|publications|citation|cite|citing|documentation)\b", re.I)
+# videos and citations are on the home page, the list of documentation pages
+# is the site's own menu, and a hand-written table of contents is replaced by
+# the one add_page_contents() builds.
+SHARED_SECTIONS = re.compile(r"^(videos?|relevant publications|publications|citation|cite|citing|documentation|table of contents)\b", re.I)
 
 
 def drop_shared_sections(dest: Path):
@@ -230,6 +231,49 @@ def drop_shared_sections(dest: Path):
         while out and out[-1].strip() in ("", "---", "***"):
             out.pop()
         md.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+# A page with many sections (four, or six headings counting subsections)
+# opens with its own table of contents, numbered with its sections, so that a
+# reader sees the whole page and its order before the first section.
+# Pages whose headings already carry numbers keep them and get the table only:
+# numbering them again would print "3.1 1. Install" and break the "§5.1"
+# references the text makes to its own numbers.
+MANY_SECTIONS = 4
+MANY_HEADINGS = 6
+NUMBERED_HEADING = re.compile(r"^#{2,3}\s+\d+(\.\d+)*[.)]?\s")
+
+
+def add_page_contents(dest: Path):
+    for md in dest.rglob("*.md"):
+        lines = md.read_text(encoding="utf-8").split("\n")
+        headings, fence, first = [], False, None
+        for i, line in enumerate(lines):
+            if line.lstrip().startswith("```"):
+                fence = not fence
+                continue
+            if fence:
+                continue
+            if line.startswith("## ") or line.startswith("### "):
+                headings.append(line)
+                if first is None and line.startswith("## "):
+                    first = i
+        sections = sum(h.startswith("## ") for h in headings)
+        if first is None or (sections < MANY_SECTIONS and len(headings) < MANY_HEADINGS):
+            continue
+        # After the page's introduction, before its first section and the
+        # rule that usually separates them.
+        at = first
+        while at > 0 and lines[at - 1].strip() in ("", "---", "***"):
+            at -= 1
+        # Furo flags a contents directive unless told it is wanted.
+        block = ["", "```{contents} On this page", ":local:", ":depth: 2", ":backlinks: none",
+                 ":class: this-will-duplicate-information-and-it-is-still-useful-here", "```", ""]
+        if not any(NUMBERED_HEADING.match(h) for h in headings):
+            # Numbered by the stylesheet (lotusim.css): the heading text, and so
+            # every anchor and link to it, stays as the repository wrote it.
+            block = ["", '<div class="lotusim-numbered"></div>'] + block
+        md.write_text("\n".join(lines[:at] + block + lines[at:]), encoding="utf-8")
 
 
 def first_heading(md: Path) -> str:
@@ -316,6 +360,7 @@ def main():
         if dest.exists():
             fetch_referenced_images(None if (name == "core" and not env(name, "REPO")) else repo, ref, dest)
             drop_shared_sections(dest)
+            add_page_contents(dest)
             rewrite_links(dest, url, ref)
             found.append(name)
             print(f"collect: {name}: {sum(1 for _ in dest.rglob('*.md'))} pages from {ref}")
