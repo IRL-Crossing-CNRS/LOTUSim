@@ -4,9 +4,9 @@
   <version>0.0.1</version>
   <description>The lotusim_msgs msgs to bridge from gazebo to ros2 and the required plugins</description>
 
-  <maintainer email="malcom.neo@fe.naval-group.com">Malcom</maintainer>
+  <maintainer email="malcom.neo@fe.naval-group.com">Malcom Neo</maintainer>
 
-  <author email="malcom.neo@fe.naval-group.com">Malcom</author>
+  <author email="malcom.neo@fe.naval-group.com">Malcom Neo</author>
 
   <license>EPL-2.0</license>
 

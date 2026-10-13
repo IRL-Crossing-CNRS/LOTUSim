@@ -15,6 +15,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Collisions.msg"
   "msg/SectorScan.msg"
   "msg/SectorScanContact.msg"
+  "msg/RadarDetection.msg"
+  "msg/RadarScan.msg"
   "srv/ActivateSensor.srv"
   
   DEPENDENCIES 

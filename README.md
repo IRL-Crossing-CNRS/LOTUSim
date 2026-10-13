@@ -215,9 +215,30 @@ For issues or questions, please open an issue and we will get back to you asap.
 
 For partnerships or contributing, contact [lotusim_support@naval-group.com](mailto:lotusim_support@naval-group.com).
 
+Published under [EPL-2.0](LICENSE).
+
+## Where to start
+
+This repository is the **core**: the Gazebo system plugins, the bridge to the
+xdyn hydrodynamic solver, the ROS 2 message definitions, the vehicle models
+and the worlds. It holds no mission logic and no scenario.
+
+| You want to | Go to |
+|---|---|
+| Run a simulation, write a scenario, fly or pilot a vehicle | The scenario workspace `LOTUSim-generic-scenario` and its `README.md` |
+| Change the simulator itself — a plugin, a message, a vehicle model, the physics bridge | [docs/DEVELOPER.md](docs/DEVELOPER.md) |
+| Know which frame is used where, and why a trajectory looks mirrored | [docs/coordinate_frames.md](docs/coordinate_frames.md) |
+
 ## Citation
 
-If you use LOTUSim in your research, please cite:
+If you use [LOTUSim](https://github.com/naval-group/LOTUSim) in your research, or any of the repositories directly linked to LOTUSim
+- [LOTUSim-Xdyn](https://github.com/naval-group/LOTUSim-Xdyn),
+- [LOTUSim-generic-scenario](https://github.com/naval-group/LOTUSim-generic-scenario),
+- [LOTUSim-Unity-modules](https://github.com/naval-group/LOTUSim-Unity-modules),
+- [LOTUSim-UI-frontend](https://github.com/naval-group/LOTUSim-UI-frontend),
+- [LOTUSim-UI-backend](https://github.com/naval-group/LOTUSim-UI-backend),
+
+Please cite:
 
 ```bibtex
 @inproceedings{LOTUSim26iros,
