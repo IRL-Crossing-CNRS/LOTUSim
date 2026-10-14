@@ -91,7 +91,8 @@ Every ROS 2 message the simulator publishes or listens to.
 :::{grid-item}
 **LOTUSim** · IROS 2026\
 [arXiv:2607.03072](https://arxiv.org/abs/2607.03072) ·
-[HAL](https://hal.science/hal-05677110)
+[HAL](https://hal.science/hal-05677110) ·
+[Paper page](https://irl-crossing-cnrs.github.io/resources/lotusim-iros2026)
 
 ```{raw} html
 <div class="lotusim-video"><iframe src="https://www.youtube-nocookie.com/embed/iXDz8ZqSpq4" title="LOTUSim video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>
@@ -101,7 +102,8 @@ Every ROS 2 message the simulator publishes or listens to.
 :::{grid-item}
 **LOTUSim-Energy** · IROS 2026 workshop\
 [arXiv:2609.17124](https://arxiv.org/abs/2609.17124) ·
-[HAL](https://hal.science/hal-05741707)
+[HAL](https://hal.science/hal-05741707) ·
+[Paper page](https://irl-crossing-cnrs.github.io/resources/lotusim-energy-iros2026)
 
 ```{raw} html
 <div class="lotusim-video"><iframe src="https://www.youtube-nocookie.com/embed/NRd-LjRrrac" title="LOTUSim-Energy video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>
@@ -114,7 +116,8 @@ Every ROS 2 message the simulator publishes or listens to.
 If you use [LOTUSim](https://github.com/naval-group/LOTUSim) in your research,
 or any of the repositories directly linked to it — the scenario workspace, the
 Unity project, the xdyn physics engine, the web UI — please cite the IROS 2026
-paper:
+paper. Its [paper page](https://irl-crossing-cnrs.github.io/resources/lotusim-iros2026)
+presents the work: abstract, figures and video.
 
 ```bibtex
 @inproceedings{buche2026lotusim,
@@ -131,7 +134,8 @@ paper:
 
 If you use LOTUSim-Energy — the offshore wind farm scenarios, the wind and
 wake models or the Unity offshore scene — please also cite the IROS 2026
-workshop paper:
+workshop paper. Its [paper page](https://irl-crossing-cnrs.github.io/resources/lotusim-energy-iros2026)
+presents the work: abstract, figures and video.
 
 ```bibtex
 @inproceedings{grosset2026lotusimenergy,
