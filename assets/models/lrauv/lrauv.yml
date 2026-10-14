@@ -187,8 +187,16 @@ bodies:
         thrust deduction factor t: 0.21978
         rotation: clockwise
         diameter: { value: 0.2539, unit: m } # confirmed: 10 in propeller, Bellingham et al. AUV'2010
+        # The measured table covers J in [-0.001, 1.5]. xdyn stops the run as
+        # soon as J leaves its table, and a near-idle propeller (the drift-only
+        # scenarios) leaves it at 0.11 m/s of relative water speed, or as soon
+        # as the water comes from astern. The end values are held flat out to
+        # J = -100 and 100; the measured points are unchanged.
         J:
           [
+            -100.0,
+            -10.0,
+            -2.0,
             -0.001,
             0.0762032296179596,
             0.0862032296179596,
@@ -224,9 +232,15 @@ bodies:
             1.14390636006296,
             1.14547475287465,
             1.5,
+            2.0,
+            10.0,
+            100.0,
           ]
         Kt:
           [
+            0.15,
+            0.15,
+            0.15,
             0.15,
             0.149629106145000,
             0.149092288412162,
@@ -262,9 +276,15 @@ bodies:
             0.000278456931594917,
             5.86402940020502e-06,
             1.0e-08,
+            1.0e-08,
+            1.0e-08,
+            1.0e-08,
           ]
         Kq:
           [
+            0.012,
+            0.012,
+            0.012,
             0.012,
             0.0118790445988717,
             0.0118696875525910,
@@ -299,6 +319,9 @@ bodies:
             0.00114980875821818,
             0.00111224468063942,
             0.00107465130413332,
+            0.001,
+            0.001,
+            0.001,
             0.001,
           ]
 
