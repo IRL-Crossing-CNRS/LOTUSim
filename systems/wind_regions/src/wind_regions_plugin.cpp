@@ -395,7 +395,7 @@ void WindRegionsPlugin::Update(
             return true;
         });
 
-    // Roughly once a second (world runs physics at 500 Hz per aerialWorld.world).
+    // Roughly every 2 s (world runs physics at 250 Hz per aerialWorld.world).
     if (++m_update_count % 500 == 0) {
         m_logger->debug(
             "WindRegionsPlugin::Update: {} wind-enabled link(s), {} skipped "
