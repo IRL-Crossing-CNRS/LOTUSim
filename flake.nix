@@ -31,7 +31,11 @@
 
     # Deliberately no `follows`: xdyn has to hash to what lxdyn's own CI built, or it
     # misses the cache and every contributor compiles the musl closure from source.
-    lxdyn.url = "github:naval-group/lxdyn";
+    # lxdyn until it is proposed upstream: mimalloc and two SSC leak fixes that keep
+    # xdyn-for-cs from growing at every step, the Ekman fixes, the rays file and the Ekman weather
+    # file re-read during a run. Only xdyn itself
+    # is compiled (~2 min); its dependency closure is unchanged and still comes from the cache.
+    lxdyn.url = "github:IRL-Crossing-CNRS/lxdyn/main";
   };
 
   outputs = { self, nix-ros-overlay, nixpkgs, flake-utils, lotusim-ui-backend, lotusim-ui-frontend, lxdyn }:
@@ -110,6 +114,8 @@
         # of the workspace's build closure, and stops a change here from
         # invalidating the build.
         shellTooling = [
+          # `ros2 bag`, for the scenarios' "record_bag".
+          ros.rosbag2
           pkgs.mise
           pkgs.nodejs_22
           pkgs.doxygen

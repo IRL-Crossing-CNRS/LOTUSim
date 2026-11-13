@@ -15,7 +15,9 @@
 
 ## Start here
 
-Three steps take you from nothing to your own mission.
+Three steps take you from nothing to your own mission. First time? Read
+[what LOTUSim is made of](overview.md): the core simulator, the scenario
+workspace, Unity and xdyn, and what each one does.
 
 ::::{grid} 1 1 3 3
 :gutter: 3
@@ -28,7 +30,7 @@ Three steps take you from nothing to your own mission.
 Choose an installation and follow its guide to the end.
 :::
 
-:::{grid-item-card} 2 · Run a scenario
+:::{grid-item-card} 2 · Run a generic scenario
 :link: _collected/scenario/README
 :link-type: doc
 :class-card: lotusim-card lotusim-step lotusim-step-2
@@ -37,7 +39,7 @@ Launch one of the example scenarios and watch it in Unity.
 :::
 
 :::{grid-item-card} 3 · Write your own
-:link: _collected/scenario/doc/WRITE_SCENARIO
+:link: _collected/scenario/doc/scenario/README
 :link-type: doc
 :class-card: lotusim-card lotusim-step lotusim-step-3
 
@@ -45,17 +47,67 @@ Describe vehicles, missions and sensors in a scenario JSON file.
 :::
 ::::
 
-## Go further
+## Use it
 
-::::{grid} 1 2 2 4
+How to run the simulator and describe what it simulates. No code.
+
+::::{grid} 1 2 4 4
 :gutter: 3
 
-:::{grid-item-card} Architecture
-:link: _collected/core/docs/DEVELOPER
+:::{grid-item-card} Generic scenario: launch options
+:link: _collected/scenario/doc/LAUNCH_OPTIONS
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+Debug, full-screen Unity, another xdyn or clone, logs.
+:::
+
+:::{grid-item-card} Sensors
+:link: _collected/core/systems/sensors/README
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+What each sensor measures and publishes, and how to put one on a vehicle.
+:::
+
+:::{grid-item-card} Generic scenario examples
+:link: _collected/scenario/src/simulation_run/config/README
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+Ready-to-run scenarios: currents, waves, wind farms, fleets.
+:::
+
+:::{grid-item-card} Faster than real time
+:link: _collected/scenario/doc/ACCELERATED_SIMULATION
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+Run a world faster than the clock.
+:::
+::::
+
+## Develop it
+
+How it is built and how to extend it, with the code.
+
+::::{grid} 1 2 4 4
+:gutter: 3
+
+:::{grid-item-card} How LOTUSim is built
+:link: dev/architecture
 :link-type: doc
 :class-card: lotusim-card lotusim-topic
 
 How the plugins, the xdyn bridge and the scenario runner fit together.
+:::
+
+:::{grid-item-card} Add a vehicle
+:link: _collected/scenario/doc/ADD_A_VEHICLE
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+Gazebo model, xdyn model, agent class and Unity prefab, step by step.
 :::
 
 :::{grid-item-card} Navigation & control
@@ -63,23 +115,47 @@ How the plugins, the xdyn bridge and the scenario runner fit together.
 :link-type: doc
 :class-card: lotusim-card lotusim-topic
 
-The guidance, navigation and control pipeline every vehicle runs.
+The guidance, navigation and control pipeline, and how to plug in your own block.
 :::
 
-:::{grid-item-card} Unity
+:::{grid-item-card} Unity project
 :link: _collected/unity/README
 :link-type: doc
 :class-card: lotusim-card lotusim-topic
 
-The 3D scene, its cameras and what it receives from the simulator.
+The 3D scene, its scripts, and how to ship a new player.
 :::
+::::
 
-:::{grid-item-card} Messages
+## Look it up
+
+Generated from the code: every message, class and function.
+
+::::{grid} 1 2 3 3
+:gutter: 3
+
+:::{grid-item-card} ROS 2 messages
 :link: _collected/reference/lotusim_msgs
 :link-type: doc
 :class-card: lotusim-card lotusim-topic
 
-Every ROS 2 message the simulator publishes or listens to.
+Every message, service and action the simulator uses.
+:::
+
+:::{grid-item-card} Generic scenario: Python API
+:link: api/python
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+The scenario SDK: agents, tasks, guidance and control, from its docstrings.
+:::
+
+:::{grid-item-card} Core simulator: C++ API
+:link: api/cpp
+:link-type: doc
+:class-card: lotusim-card lotusim-topic
+
+The core's Gazebo plugins, from their header comments.
 :::
 ::::
 
@@ -163,59 +239,46 @@ presents the work: abstract, figures and video.
 :caption: Get started
 :hidden:
 
-How to install <_collected/install/index>
-Run a scenario <_collected/scenario/README>
-Write a scenario <_collected/scenario/doc/WRITE_SCENARIO>
-Scenario examples <_collected/scenario/src/simulation_run/config/README>
+What LOTUSim is made of <overview>
+Install <_collected/install/index>
+Run a generic scenario <_collected/scenario/README>
+Generic scenario: launch options <_collected/scenario/doc/LAUNCH_OPTIONS>
+Build, rebuild and source <rebuild>
+Unity player problems <unity-troubleshooting>
 ```
 
 ```{toctree}
-:caption: Guides
+:caption: User guide
 :hidden:
 
-Missions and behaviour trees <_collected/scenario/doc/MISSIONS>
-Faster than real time <_collected/scenario/doc/ACCELERATED_SIMULATION>
-Agents on a remote machine <_collected/scenario/deployment/README>
-Jupyter examples <_collected/core/examples/jupyter-python/README>
+Generic scenario reference <_collected/scenario/doc/scenario/README>
+Generic scenario examples <_collected/scenario/src/simulation_run/config/README>
+Sensors on a vehicle <_collected/core/systems/sensors/README>
+PX4 drones <_collected/scenario/doc/PX4_DRONES>
+Run faster than real time <_collected/scenario/doc/ACCELERATED_SIMULATION>
+Run agents on another machine <_collected/scenario/deployment/README>
+Drive the LRAUV propeller by hand <_collected/scenario/doc/LRAUV_PROPELLER_DEMO>
 ```
 
 ```{toctree}
-:caption: Unity
+:caption: Developer guide
 :hidden:
 
-Unity project <_collected/unity/README>
-Unity troubleshooting <unity-troubleshooting>
+How LOTUSim is built <dev/architecture>
+Missions, navigation and control <dev/missions-gnc>
+Physics and environment <dev/physics>
+Extend LOTUSim <dev/extend>
+Core plugins <dev/core-plugins>
+Unity project <dev/unity>
 ```
 
 ```{toctree}
-:caption: PX4 (aerial drones)
+:caption: API reference
 :hidden:
 
-PX4 integration <_collected/core/docs/PX4_Documentation/PX4_Integration_Technical>
-PX4 data flow <_collected/core/docs/PX4_Documentation/PX4_Flow_Diagram>
-Autonomous navigation <_collected/core/docs/PX4_Documentation/AUTONAV_RECOMMENDATION>
-PX4 path vs ROS waypoints <_collected/core/docs/PX4_Documentation/AUTONAV_PX4_VS_DIRECT_ROS_WAYPOINT_COMPARISON>
-```
-
-```{toctree}
-:caption: Architecture (developers)
-:hidden:
-
-Core simulator <_collected/core/docs/DEVELOPER>
-Scenario workspace <_collected/scenario/doc/ARCHITECTURE>
-Scenario workspace: developer guide <_collected/scenario/doc/DEVELOPER>
-Coordinate frames <_collected/core/docs/coordinate_frames>
-Navigation, guidance & control <_collected/scenario/doc/GNC_MODULAR_ARCHITECTURE>
-Wind and wake <_collected/scenario/doc/WAKE_EFFECT>
-Diagrams <_collected/scenario/doc/DIAGRAMS>
-```
-
-```{toctree}
-:caption: ROS 2 custom messages
-:hidden:
-:glob:
-
-_collected/reference/*
+Generic scenario: Python API <api/python>
+Core simulator: C++ API <api/cpp>
+ROS 2 messages <messages>
 ```
 
 ```{toctree}

@@ -2,26 +2,28 @@
 
 ## 1. Purpose
 
-This report describes how PX4 SITL was integrated into LOTUSim Generic Scenario for the X500 aerial drone workflow.
+This report describes how PX4 SITL is integrated into LOTUSim Generic Scenario for the X500 aerial drone workflow.
 
-The goal of the integration is to allow an X500 drone spawned from a Generic Scenario configuration to be controlled by PX4 SITL and QGroundControl while preserving LOTUSim's existing separated-world architecture.
+The goal of the integration is to let an X500 drone spawned from a Generic Scenario configuration be flown by PX4 SITL, from QGroundControl or from a mission task, while keeping LOTUSim's separated-world architecture.
 
-The final behavior is:
+The resulting behavior is:
 
 ```text
 Generic Scenario launches the simulation
-X500 agent is spawned as x5000
-The aerial spawn is forwarded to aerialPx4World
-PX4 SITL starts and attaches to x5000
-QGroundControl connects to PX4 through MAVLink
+X500 agent is spawned in the scenario world (energy)
+AerialMAS forwards the real airframe to aerialWorld and keeps a mirror in energy
+PX4 SITL starts and attaches to the airframe in aerialWorld
+QGroundControl, or the px4_offboard_patrol task, talks to PX4 over MAVLink
 PX4 receives Gazebo sensor data
 PX4 publishes motor commands back to Gazebo
-The drone moves in simulation
+The drone moves, and Unity follows the mirror
 ```
+
+The user-facing guide (installing PX4, enabling it on an agent, flying it) is `doc/PX4_DRONES.md` in Generic Scenario. This page explains how the pieces are wired.
 
 ## 2. Repositories Involved
 
-The integration spans two repositories.
+The integration spans two repositories plus PX4 itself.
 
 ### LOTUSim Core
 
@@ -62,7 +64,7 @@ Responsibilities:
 Path:
 
 ```text
-$HOME/PX4-Autopilot
+$PX4_AUTOPILOT_PATH   (default: $HOME/PX4-Autopilot)
 ```
 
 Responsibilities:
@@ -70,16 +72,13 @@ Responsibilities:
 - PX4 SITL flight controller
 - Gazebo bridge module
 - MAVLink server
-- QGroundControl communication
 - estimator, sensors, arming, and motor output logic
 
-PX4 is used as an external dependency. No PX4 source code changes were required.
+PX4 is used as an external dependency, built once with `make px4_sitl`. No PX4 source code changes are required.
 
 ## 3. Why A Separate Aerial World Is Kept
 
-LOTUSim already separates aerial agents from the main defense scenario world.
-
-The main world, `defenseScenario`, supports surface and underwater simulation behavior. It is designed around LOTUSim's existing naval simulation stack, including XDyn-related workflows.
+The scenario world, `energy`, runs surface and underwater simulation. It is designed around LOTUSim's naval simulation stack, including xdyn.
 
 PX4-controlled drones need a different simulation setup:
 
@@ -90,29 +89,29 @@ PX4-controlled drones need a different simulation setup:
 - stable model naming
 - Gazebo world/model topics that PX4 expects
 
-For this reason, the integration keeps the intended architecture:
+For this reason, every run launches two worlds:
 
 ```text
-defenseScenarioPx4Forwarded.world
-  main scenario/render world
+energy.world
+  scenario/render world (the scenario JSON's world_file)
 
-aerialPx4World.world
+aerialWorld.world
   real aerial physics world for PX4 drones
 ```
 
-This avoids breaking existing LOTUSim surface/underwater scenarios while introducing PX4 support for aerial agents.
+`aerialWorld` is not a scenario choice: `simulation_runner.build_launch_command()` always launches it, from the hardcoded `utils.AERIAL_WORLD_FILE`. The name `aerialWorld` must agree everywhere it appears (the world SDF, the `<aerial_namespace>` of `AerialMAS`, and the Aerial `physics_engine_interface` block the agent SDK emits). A mismatch does not raise an error; the aerial MAS just reports "not available".
 
 ## 4. High-Level Architecture
 
 ```mermaid
 flowchart LR
-    Config[defenseScenarioPx4.json]
+    Config[px4_manual_wake_flying.json]
     Scenario[simulation_run]
     X500[X500 Agent]
-    MainWorld[defenseScenarioPx4Forwarded]
+    MainWorld[energy]
     AerialBridge[AerialMAS]
-    AerialWorld[aerialPx4World]
-    Drone[x5000 / x500_px4]
+    AerialWorld[aerialWorld]
+    Drone[x500_px4_wake0 / x500_px4]
     PX4[PX4 SITL]
     QGC[QGroundControl]
     Unity[Unity Renderer]
@@ -124,7 +123,7 @@ flowchart LR
     AerialBridge -->|Forward MASCmd| AerialWorld
     AerialWorld --> Drone
 
-    X500 -->|launch make px4_sitl gz_x500| PX4
+    X500 -->|starts bin/px4 -i N -d| PX4
     PX4 <-->|Gazebo sensors and motor commands| Drone
     QGC <-->|MAVLink UDP| PX4
     MainWorld -->|renderer_cmd / poses| Unity
@@ -132,29 +131,30 @@ flowchart LR
 
 ## 5. Scenario Configuration
 
-The PX4 scenario is configured in:
+PX4 is enabled per agent. Example scenarios:
 
 ```text
-src/simulation_run/config/defenseScenarioPx4.json
+src/simulation_run/config/wind_wake_examples/px4_manual_wake_flying.json
+src/simulation_run/config/wind_wake_examples/px4_offboard_patrol_test.json
+src/simulation_run/config/wind_wake_examples/wake_crossing_demo.json
 ```
 
 Relevant fields:
 
 ```json
 {
-  "world_file": "defenseScenarioPx4Forwarded.world",
-  "aerial_world": "aerialPx4World.world",
-  "agents": {
-    "X500": {
-      "nb_agents": 1,
-      "poses": [[20.0, 100.0, 20.0, 0.0, 0.0, 0.0]],
-      "sdf_file": "model.sdf",
-      "xdyn": false,
+  "world_file": "energy.world",
+  "agents": [
+    {
+      "id": "x500_px4",
+      "class": "X500",
+      "spawn": { "x": 20, "y": 30, "z": 0, "yaw": 0.0 },
       "px4": true,
-      "px4_control": "manual"
+      "px4_control": "manual",
+      "sdf_file": "model.sdf",
+      "xdyn": false
     }
-  },
-  "aerial_domain": true,
+  ],
   "renderer_unity": true
 }
 ```
@@ -165,7 +165,7 @@ The important field is:
 "px4": true
 ```
 
-This tells the X500 agent to use the PX4-capable Gazebo model and to start PX4 SITL after the spawn command.
+It makes the X500 agent spawn the PX4-capable Gazebo model and start PX4 SITL once the spawn is confirmed. `spawn.z` must be `0` on a PX4 agent: an unarmed multirotor produces no thrust, so a drone spawned in the air falls before PX4 has booted and the impact corrupts EKF2's estimates. `px4_control` (`manual` or `offboard`) is descriptive; the attached mission task is what drives the vehicle.
 
 ## 6. Launch Flow
 
@@ -173,182 +173,156 @@ The user starts the scenario with:
 
 ```bash
 ./src/simulation_run/executable/scenario_launch.sh \
-  --config src/simulation_run/config/defenseScenarioPx4.json \
-  --debug
+  --config wind_wake_examples/px4_manual_wake_flying.json
 ```
 
 The launch script performs the following steps:
 
-1. Starts ROS TCP endpoint for Unity.
-2. Starts Unity executable if `renderer_unity` is true.
-3. Starts the `simulation_run` ROS 2 entry point.
-4. `simulation_run` launches the aerial world.
-5. `simulation_run` launches the main scenario world.
+1. Resolves `PX4_AUTOPILOT_PATH`.
+2. Starts the ROS TCP endpoint for Unity.
+3. Starts the Unity executable if `renderer_unity` is true.
+4. Starts the `simulation_run` ROS 2 entry point (shard 0, plus more shards with `--shards`).
+5. `simulation_run` launches the aerial world, then the scenario world.
 6. `AgentsManager` creates and spawns the configured X500 agent.
-7. The X500 agent starts PX4 SITL.
+7. When the spawn is confirmed, the X500 agent starts PX4 SITL.
 
 The two worlds are launched as:
 
 ```text
-lotusim run aerialPx4World.world
-lotusim run defenseScenarioPx4Forwarded.world
+mise run --cd $LOTUSIM_PATH sim aerialWorld.world
+mise run --cd $LOTUSIM_PATH sim energy.world
 ```
 
-The aerial world is launched first so the main world can forward aerial spawn commands to it.
+(`lotusim run <world>` when mise is not installed.) The aerial world is launched first so the scenario world's `AerialMAS` finds `/aerialWorld/mas_cmd` when it loads.
 
 ## 7. Agent Creation And PX4 Flag
 
-The agent manager reads each agent block from the scenario configuration.
-
-In:
+The agent manager reads each agent entry from the scenario configuration, in:
 
 ```text
 src/simulation_run/simulation_run/agents_manager.py
 ```
 
-the PX4 flag is extracted:
+`AgentsManager._px4_kwargs()` reads `px4` and `px4_control` and forwards them as `px4_enabled` / `px4_control`, but only to agent classes whose constructor declares those parameters. Every other agent type is unaffected.
 
-```python
-px4_enabled = bool(agent_info.get("px4", False))
-```
-
-That flag is passed into the X500 agent constructor:
-
-```python
-agent_node = self._create_agent_instance(
-    agent_class,
-    unique_sdf,
-    world_name,
-    xdyn_enabled,
-    px4_enabled=px4_enabled,
-)
-```
-
-The instance name is generated as:
+The instance name is the entry's `id` followed by its index:
 
 ```text
-x5000
+x500_px4  ->  x500_px40
 ```
 
 That name becomes the Gazebo model instance name and the PX4 attachment target.
 
 ## 8. X500 PX4 Behavior
 
-The main PX4 integration hook is in:
+The PX4 integration lives in:
 
 ```text
-src/agents/x500/x500/x500.py
+src/lotusim_sdk/lotusim_sdk/agents/entity/physical/x500.py
 ```
 
 When PX4 is enabled:
 
 ```python
-self.model_name = "x500_px4" if px4_enabled else "x500"
-self.renderer_type_name = "x500"
+if self.px4_enabled:
+    self.model_name = self.PX4_MODEL_NAME   # "x500_px4"
 ```
 
-This creates an intentional split:
+The renderer type stays `x500`, which gives an intentional split:
 
 ```text
 Gazebo/PX4 model: x500_px4
 Unity visual model: x500
-Spawned instance: x5000
+Spawned instance: x500_px40
 ```
 
-This is important because Unity already knows how to render `x500`, while Gazebo/PX4 needs the enhanced `x500_px4` model with sensors and motor plugins.
+Unity already knows how to render `x500`, while Gazebo/PX4 needs the `x500_px4` model with its sensors and motor plugins.
 
-After the normal LOTUSim spawn command is sent, PX4 is started:
+PX4 is started from `confirm_spawn()`, the signal fired by both spawn paths once the host has assigned the entity's final name:
 
 ```python
-result = super().send_single_mas_cmd(value, server_timeout_sec)
-...
-self._start_px4_sitl()
+def confirm_spawn(self, assigned_name):
+    super().confirm_spawn(assigned_name)
+    if self.px4_enabled and self.px4_process is None:
+        self._start_px4_sitl()
 ```
 
-PX4 is started using:
+`_start_px4_sitl()` runs the prebuilt PX4 binary directly, in daemon mode (no interactive `pxh>` shell):
 
 ```python
-cmd = ["make", "px4_sitl", "gz_x500"]
+cmd = [px4_binary, "-i", str(instance), "-d"]
+# px4_binary = $PX4_AUTOPILOT_PATH/build/px4_sitl_default/bin/px4
 ```
 
 with this environment:
 
 ```python
-env["GZ_CONFIG_PATH"] = f"/usr/share/gz:{env.get('GZ_CONFIG_PATH', '')}"
 env["PX4_GZ_MODEL_NAME"] = self.agent_name
-env["PX4_GZ_WORLD"] = gz_world
+env["PX4_GZ_WORLD"] = gz_world          # "aerialWorld"
+env["PX4_SIM_MODEL"] = "gz_x500"
+env.setdefault("GZ_IP", "127.0.0.1")
 ```
 
 For the first drone:
 
 ```bash
-PX4_GZ_MODEL_NAME=x5000
-PX4_GZ_WORLD=aerialPx4World
+PX4_GZ_MODEL_NAME=x500_px40
+PX4_GZ_WORLD=aerialWorld
 ```
 
 This is how PX4 knows which existing Gazebo model and world to attach to.
 
+Other details of the launch:
+
+- Each PX4 process gets its own instance number `-i N` (`X500._next_px4_instance`), so `MAV_SYS_ID` and the MAVLink ports differ and QGroundControl sees distinct vehicles. With several shards, each shard numbers its instances from `LOTUSIM_PX4_INSTANCE_BASE`.
+- Each instance runs in its own working directory, `build/px4_sitl_default/instance_N`, so EEPROM, parameters and logs never collide. A stale `dataman` file is removed first, otherwise PX4 replays the previous mission.
+- A leftover PX4 process holding the same instance lock is killed first.
+- Inside the nix devshell, the nix entries are removed from `LD_LIBRARY_PATH`, `PATH` and `GZ_CONFIG_PATH`, so the system-built PX4 finds the system gz libraries it was linked against.
+- The console output goes to `scenario_logs/<timestamp>/px4_sitl_<agent_name>.log`.
+- `X500.destroy_node()` terminates the PX4 process when the agent is torn down.
+
 ## 9. MAS Spawn Command
 
-All agents use the LOTUSim MAS command action interface.
-
-In:
+All agents are spawned through the LOTUSim MAS command actions. By default, `AgentsManager` sends every CREATE_CMD of a spawn wave in one `MASCmdArray` goal (`send_batch_mas_cmd`, in `src/lotusim_sdk/lotusim_sdk/agents/entity/__init__.py`):
 
 ```text
-src/simulation_run/simulation_run/agent.py
+/energy/mas_cmd_array
 ```
 
-the action client is created for the main world:
-
-```python
-self.mas_action_client = ActionClient(
-    self,
-    lotusim_msgs.action.MASCmd,
-    f"/{world_name}/mas_cmd"
-)
-```
-
-The spawn command contains:
-
-```python
-cmd.cmd_type = MASCmd.CREATE_CMD
-cmd.model_name = self.model_name
-cmd.sdf_file = self.sdf_file
-cmd.vessel_name = self.agent_name
-cmd.sdf_string = self.lotus_param()
-```
-
-For the PX4 X500 case:
+When the host has no `mas_cmd_array` server, each agent sends its own command on:
 
 ```text
-cmd.model_name  = x500_px4
-cmd.sdf_file    = model.sdf
-cmd.vessel_name = x5000
+/energy/mas_cmd
 ```
 
-This command is sent to:
+The X500 registers under the scenario's own world, like any other entity. It must not register directly under `aerialWorld`: that would skip the forward and mirror steps, and the drone would never appear in the scenario world or in Unity.
+
+For the PX4 X500 case, the command carries:
 
 ```text
-/defenseScenario/mas_cmd
+model_name  = x500_px4
+sdf_file    = model.sdf
+vessel_name = x500_px40
+sdf_string  = <lotus_param> with an Aerial physics_engine_interface block
 ```
 
 ## 10. Aerial Forwarding Bridge
 
-The main world file is:
+The scenario world file is:
 
 ```text
-assets/worlds/defenseScenarioPx4Forwarded.world
+assets/worlds/energy.world
 ```
 
 It contains:
 
 ```xml
 <plugin filename="aerial_demo_mas" name="lotusim::gazebo::AerialMAS">
-    <aerial_namespace>aerialPx4World</aerial_namespace>
+    <aerial_namespace>aerialWorld</aerial_namespace>
 </plugin>
 ```
 
-This tells the main world where aerial spawn commands should be forwarded.
+This tells the scenario world where aerial spawn commands should be forwarded.
 
 The forwarding logic is in:
 
@@ -356,43 +330,38 @@ The forwarding logic is in:
 systems/aerial_demo_entity_manager/src/aerial_mas.cpp
 ```
 
-It creates an action client to:
+`AerialMAS` inherits from `MultiAgentSystem`. It spawns the entity in the scenario world as usual, and forwards the command to:
 
 ```text
-/aerialPx4World/mas_cmd
+/aerialWorld/mas_cmd
 ```
 
-Then forwards the original MAS command:
-
-```cpp
-aerial_goal_msg.cmd = msg;
-m_aerial_mas_client->async_send_goal(
-    aerial_goal_msg,
-    send_goal_options);
-```
+It forwards only the agents whose `<aerial>` physics block is wired as `<connection_type>ROS2</connection_type>` (`mirrorsFromAerialWorld`), meaning "the host mirrors my pose from the aerial world". Surface and underwater agents are never forwarded: the aerial world could not handle their hull collision meshes.
 
 So the spawn path is:
 
 ```text
 Generic Scenario X500 agent
-  -> /defenseScenario/mas_cmd
+  -> /energy/mas_cmd_array (or /energy/mas_cmd)
   -> AerialMAS
-  -> /aerialPx4World/mas_cmd
-  -> x5000 created in aerialPx4World
+  -> /aerialWorld/mas_cmd
+  -> x500_px40 created in aerialWorld
 ```
+
+The pose of the real drone then flows back into the mirror in `energy`; see `PX4_Flow_Diagram.md`.
 
 ## 11. PX4-Compatible Aerial World
 
-The dedicated PX4 aerial world is:
+The aerial world is:
 
 ```text
-assets/worlds/aerialPx4World.world
+assets/worlds/aerialWorld.world
 ```
 
 Important world settings:
 
 ```xml
-<world name="aerialPx4World">
+<world name="aerialWorld">
   <gravity>0 0 -9.8066</gravity>
 
   <physics type="ode">
@@ -405,17 +374,18 @@ Important world settings:
 
 These settings are needed because PX4 expects a real flight environment rather than the zero-gravity naval scenario world.
 
-The aerial world also loads sensor and entity-management systems, including:
+The aerial world also loads:
 
 - IMU system
 - magnetometer system
 - air pressure system
 - sensors system
 - navsat system
+- user commands system
 - physics system
-- entity manager
+- MultiAgentSystem
 - scene broadcaster
-- wind effects
+- wind regions plugin
 
 ## 12. PX4-Compatible X500 Model
 
@@ -425,7 +395,7 @@ The PX4 model is:
 assets/models/x500_px4/model.sdf
 ```
 
-It contains simulated sensors required by PX4:
+It contains the simulated sensors PX4 requires:
 
 ```xml
 <sensor name="imu_sensor" type="imu">
@@ -457,56 +427,51 @@ $PX4_AUTOPILOT_PATH/src/modules/simulation/gz_bridge
 
 The bridge subscribes to Gazebo topics using the world and model names passed by the integration.
 
-For this project, PX4 subscribes to topics like:
+For the first drone, PX4 subscribes to topics like:
 
 ```text
-/world/aerialPx4World/clock
-/world/aerialPx4World/pose/info
-/world/aerialPx4World/model/x5000/link/base_link/sensor/imu_sensor/imu
-/world/aerialPx4World/model/x5000/link/base_link/sensor/air_pressure_sensor/air_pressure
-/world/aerialPx4World/model/x5000/link/base_link/sensor/magnetometer_sensor/magnetometer
-/world/aerialPx4World/model/x5000/link/base_link/sensor/navsat_sensor/navsat
+/world/aerialWorld/clock
+/world/aerialWorld/pose/info
+/world/aerialWorld/model/x500_px40/link/base_link/sensor/imu_sensor/imu
+/world/aerialWorld/model/x500_px40/link/base_link/sensor/air_pressure_sensor/air_pressure
+/world/aerialWorld/model/x500_px40/link/base_link/sensor/magnetometer_sensor/magnetometer
+/world/aerialWorld/model/x500_px40/link/base_link/sensor/navsat_sensor/navsat
 ```
 
 PX4 publishes motor commands to:
 
 ```text
-/x5000/command/motor_speed
+/x500_px40/command/motor_speed
 ```
 
-Gazebo also exposes this as:
+PX4's bridge converts Gazebo sensor messages into PX4 internal sensor messages, then PX4's estimator and controller produce actuator outputs. Those outputs are published back to Gazebo as motor speed commands.
 
-```text
-/model/x5000/command/motor_speed
-```
+## 14. MAVLink: QGroundControl And Offboard Control
 
-PX4's bridge converts Gazebo sensor messages into PX4 internal sensor messages, then PX4's estimator and controller produce actuator outputs. Those actuator outputs are published back to Gazebo as motor speed commands.
+Nothing talks to PX4 through LOTUSim: PX4 is commanded over MAVLink only.
 
-## 14. QGroundControl Communication
-
-QGroundControl does not communicate with LOTUSim directly.
-
-QGroundControl connects to PX4 through MAVLink, usually over UDP on localhost.
+- **QGroundControl** connects automatically to any PX4 SITL instance on `localhost:14550` (`px4_control: "manual"`).
+- **The `px4_offboard_patrol` mission task** (`src/lotusim_sdk/lotusim_sdk/tasks/px4_offboard_patrol.py`) connects on UDP port `14540 + instance`, arms the vehicle, takes off, switches to OFFBOARD and streams position setpoints through a waypoint list (`px4_control: "offboard"`).
 
 The control path is:
 
 ```text
-QGroundControl
+QGroundControl or px4_offboard_patrol
   -> MAVLink
   -> PX4 SITL
   -> Gazebo motor command topic
-  -> x5000 motor plugins
+  -> x500_px40 motor plugins
   -> drone moves
 ```
 
 The feedback path is:
 
 ```text
-Gazebo x5000 sensors
+Gazebo x500_px40 sensors
   -> PX4 gz_bridge
   -> PX4 estimator/state
   -> MAVLink telemetry
-  -> QGroundControl
+  -> QGroundControl or px4_offboard_patrol
 ```
 
 ## 15. Why PX4 Integration Appears Small
@@ -534,47 +499,41 @@ LOTUSim Generic Scenario mainly provides:
 - spawn lifecycle
 - correct world selection
 - correct model selection
-- PX4 process launch
+- PX4 process launch, one instance per drone
 - correct environment variables
 - Unity rendering compatibility
 
 The integration is therefore mostly about making names, topics, worlds, and process timing match.
 
-## 16. What Was Changed
+## 16. Where The Integration Lives
 
 ### Generic Scenario
 
-Added or modified:
-
-- PX4-enabled scenario config: `defenseScenarioPx4.json`
-- X500 PX4 startup hook in `x500.py`
-- support for choosing `x500_px4` as Gazebo model when `px4: true`
-- Unity renderer type kept as `x500`
-- PX4 environment variables:
-  - `PX4_GZ_MODEL_NAME`
-  - `PX4_GZ_WORLD`
-  - `GZ_CONFIG_PATH`
-- support for `aerial_world` namespace propagation
-- README PX4 setup instructions
+- PX4-enabled example scenarios in `src/simulation_run/config/wind_wake_examples/`
+- `AgentsManager._px4_kwargs()` in `agents_manager.py`
+- PX4 startup and teardown in `x500.py` (`confirm_spawn`, `_start_px4_sitl`, `destroy_node`)
+- `x500_px4` chosen as the Gazebo model when `px4: true`, Unity renderer type kept as `x500`
+- PX4 environment variables: `PX4_GZ_MODEL_NAME`, `PX4_GZ_WORLD`, `PX4_SIM_MODEL`, `GZ_IP`
+- the `px4_offboard_patrol` task
+- `PX4_AUTOPILOT_PATH` resolution in `scenario_launch.sh`
+- the user guide, `doc/PX4_DRONES.md`
 
 ### LOTUSim Core
 
-Added or modified:
-
-- `aerialPx4World.world`
-- `defenseScenarioPx4Forwarded.world`
-- `x500_px4` Gazebo model
+- `aerialWorld.world`
+- the `AerialMAS` plugin in `energy.world`
+- the `x500_px4` Gazebo model
 - PX4-compatible sensor and motor plugin setup
 
 ## 17. Summary
 
-PX4 was integrated into LOTUSim by preserving the existing separate aerial-world design and adding a PX4-aware X500 workflow.
+PX4 is integrated into LOTUSim by keeping the separate aerial-world design and adding a PX4-aware X500 workflow.
 
 The main integration points are:
 
-- Generic Scenario spawns an X500 agent.
+- Generic Scenario spawns an X500 agent in the scenario world.
 - The X500 agent selects `x500_px4` as the Gazebo model when PX4 is enabled.
-- The main world forwards aerial spawn commands to `aerialPx4World`.
-- PX4 SITL is launched with the correct world and model environment variables.
+- The scenario world's `AerialMAS` forwards the airframe to `aerialWorld` and keeps a mirror for Unity.
+- PX4 SITL is started on spawn confirmation, with the correct world and model environment variables.
 - PX4's existing Gazebo bridge handles sensor and actuator communication.
-- QGroundControl controls PX4 through MAVLink.
+- QGroundControl or the `px4_offboard_patrol` task controls PX4 through MAVLink.

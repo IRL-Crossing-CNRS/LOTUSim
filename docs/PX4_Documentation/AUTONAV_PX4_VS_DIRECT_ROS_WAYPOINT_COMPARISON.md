@@ -1,5 +1,7 @@
 # Autonavigation Comparison: PX4 Path vs Direct ROS Waypoint Path
 
+> **Status: design note.** The packages proposed here (`px4_offboard_autonav`, `aerial_navigation`) were not built. Offboard flight was implemented as the `px4_offboard_patrol` mission task of Generic Scenario, over MAVLink with pymavlink (`src/lotusim_sdk/lotusim_sdk/tasks/px4_offboard_patrol.py`); its usage is in `doc/PX4_DRONES.md`.
+
 This document compares two ways to implement autonomous navigation for an aerial
 agent in LOTUSim:
 

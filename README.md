@@ -4,6 +4,19 @@
 
 LOTUSim is a real-time, multi-domain simulation platform for maritime operations. It models realistic surface, underwater, and air physics for aerial drones, surface ships, and underwater vehicles. An immersive interface lets human operators run human-autonomous agent scenarios, and physically accurate models make LOTUSim suitable for training AI algorithms.
 
+## Three ways to run LOTUSim
+
+Every page of the documentation says which of these it is about.
+
+| | What runs | Started with | Scenario format | Repositories |
+|---|---|---|---|---|
+| **Core simulator alone** | A world and its plugins; vehicles appear when something sends them a command (a script, the examples) | `lotusim run` (Naval Group install), `lotusim_core sim <world>` (IRL Crossing private install), `mise run sim` (from a clone) | none | this one |
+| **Generic scenario** (IRL Crossing) | The worlds, the xdyn servers, the agents with their missions, and the Unity player | `scenario_launch.sh --config <file>.json`, in the scenario workspace | JSON | this one and `LOTUSim-generic-scenario` |
+| **UI scenarios** (Naval Group) | A world and the vehicles of a scenario edited in the web UI | `lotusim-ui`, then "Launch Scenario" | YAML (`assets/scenarios/`) | this one and the LOTUSim UI repositories |
+
+The IRL Crossing installs use the first two. The Quickstart below is Naval
+Group's: it installs the core with its web UI, without the generic scenario.
+
 ## Repositories
 
 | Repository | Description |
@@ -13,6 +26,9 @@ LOTUSim is a real-time, multi-domain simulation platform for maritime operations
 | [LOTUSim-UI-backend](https://github.com/naval-group/LOTUSim-UI-backend) | Backend supporting the LOTUSim UI |
 | [lxdyn](https://github.com/naval-group/lxdyn) | Underwater and surface physics engine |
 | [LOTUSim-Unity-modules](https://github.com/naval-group/LOTUSim-Unity-modules)| 3D rendering for LOTUSim scenarios |
+| [LOTUSim-generic-scenario](https://github.com/IRL-Crossing-CNRS/LOTUSim-generic-scenario) | IRL Crossing: the generic scenario workspace (agents, missions, guidance and control, JSON scenarios) |
+| [LOTUSim-Energy](https://github.com/IRL-Crossing-CNRS/LOTUSim-Energy) | IRL Crossing: the Unity project of the generic scenario's renderer |
+| [How_To_Install_LOTUSim](https://github.com/IRL-Crossing-CNRS/How_To_Install_LOTUSim) | IRL Crossing: installs the core and the generic scenario together |
 
 ## Installation
 
@@ -225,7 +241,8 @@ and the worlds. It holds no mission logic and no scenario.
 
 | You want to | Go to |
 |---|---|
-| Run a simulation, write a scenario, fly or pilot a vehicle | The scenario workspace `LOTUSim-generic-scenario` and its `README.md` |
+| Run a generic scenario, write one, fly or pilot a vehicle | The scenario workspace `LOTUSim-generic-scenario` and its `README.md` |
+| Start a world of the core on its own | `lotusim_core sim <world>`, or `mise run sim <world>` from this clone (`mise tasks` lists the others) |
 | Change the simulator itself — a plugin, a message, a vehicle model, the physics bridge | [docs/DEVELOPER.md](docs/DEVELOPER.md) |
 | Know which frame is used where, and why a trajectory looks mirrored | [docs/coordinate_frames.md](docs/coordinate_frames.md) |
 

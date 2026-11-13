@@ -14,4 +14,5 @@ are changing.
 
 Core simulator <_collected/core/CONTRIBUTING>
 Scenario workspace <_collected/scenario/CONTRIBUTING>
+Unity project <_collected/unity/CONTRIBUTING>
 ```

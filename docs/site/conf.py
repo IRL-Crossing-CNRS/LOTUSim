@@ -17,9 +17,22 @@ extensions = [
     "sphinxcontrib.mermaid",
 ]
 
-source_suffix = {".md": "markdown"}
+source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
+
+# The Python API reference, from the docstrings of the scenario workspace's
+# SDK. collect.py copies its sources; sphinx-autoapi reads them without
+# importing them, so ROS 2 need not be installed to build the site.
+_sdk = os.path.join(os.path.dirname(__file__), "_collected", ".api", "python", "lotusim_sdk")
+if os.path.isdir(_sdk):
+    extensions.append("autoapi.extension")
+    autoapi_dirs = [_sdk]
+    autoapi_root = "reference/python"
+    autoapi_add_toctree_entry = False
+    autoapi_keep_files = False
+    autoapi_ignore = ["*/test/*"]
+    autoapi_options = ["members", "undoc-members", "show-inheritance", "show-module-summary"]
 root_doc = "index"
-exclude_patterns = ["_build", ".venv", "README.md", "_collected/.sources", "_collected/.core_interfaces", "_collected_assets"]
+exclude_patterns = ["_build", ".venv", "README.md", "_collected/.sources", "_collected/.core_interfaces", "_collected/.api", "_collected/core/docs/PX4_Documentation", "_collected_assets", "_cpp_api"]
 
 myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "html_image"]
 myst_heading_anchors = 3
@@ -58,7 +71,7 @@ window.mermaid = mermaid;
 # Collected pages are written for GitHub, not for this site: a few of their
 # links point at anchors or files Sphinx cannot resolve. They still work as
 # plain links; do not fail the build on them.
-suppress_warnings = ["myst.xref_missing", "myst.header", "toc.not_included", "misc.highlighting_failure"]
+suppress_warnings = ["myst.xref_missing", "myst.header", "misc.highlighting_failure", "autoapi.python_import_resolution"]
 
 html_theme = "furo"
 html_title = "LOTUSim"
@@ -74,7 +87,7 @@ templates_path = ["_templates"]
 
 # lotusim-links.html is the page the printed QR codes point to. It is copied
 # to the root of the site untouched, so its URL never changes.
-html_extra_path = ["_extra", "_collected_assets"]
+html_extra_path = ["_extra", "_collected_assets"] + (["_cpp_api"] if os.path.isdir(os.path.join(os.path.dirname(__file__), "_cpp_api")) else [])
 
 html_sidebars = {
     "**": [

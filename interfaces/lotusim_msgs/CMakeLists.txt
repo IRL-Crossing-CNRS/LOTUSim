@@ -29,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LCOEState.msg"
   "msg/GuidanceSetpoint.msg"
   "msg/PowerStatus.msg"
+  "msg/WaveSpectrum.msg"
   "action/MASCmdArray.action"
   "action/MASCmd.action"
   "srv/SetWaypoints.srv"

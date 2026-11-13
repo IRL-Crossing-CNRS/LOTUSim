@@ -6,7 +6,8 @@ LOTUSIM_MODELS_PATH = "{{config_root}}/assets/models/"
 # The root xdyn resolves a YAML's relative mesh and seabed paths against.
 XDYN_ASSETS_PATH = "{{config_root}}/assets/models/"
 LOTUSIM_SCENARIOS_PATH = "{{config_root}}/assets/scenarios"
-LOTUSIM_LOG_LEVEL = "info"
+# An exported level wins, so a demo machine can run with LOTUSIM_LOG_LEVEL=off.
+LOTUSIM_LOG_LEVEL = "{{ get_env(name='LOTUSIM_LOG_LEVEL', default='info') }}"
 
 GZ_SIM_SYSTEM_PLUGIN_PATH = "{{config_root}}/install/lib"
 # model:// resolves against the directory holding <model>/model.config.

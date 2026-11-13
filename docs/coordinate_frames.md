@@ -120,9 +120,9 @@ not override it.
 | `commando` (`models/generic/commando1.prefab`) | needs pivot, see below | Euler (0, 90, 0) once a pivot exists |
 | `fremm` (`models/boat/fremm.dae`) | needs prefab + pivot, see below | Euler (0, 90, 0) once a pivot exists |
 
-- Every value above is the pre-existing prefab rotation plus 90 deg about Y.
-  The old xdyn convention needed no yaw compensation; the corrected one needs
-  90 deg, so the offset is uniform across the fleet.
+- Every value above is the mesh's own rotation plus 90 deg about Y: the
+  offset between the xdyn heading convention and Unity's, the same for every
+  vehicle.
 
 ### Prefabs with no pivot node
 

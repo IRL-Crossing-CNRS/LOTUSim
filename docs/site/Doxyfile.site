@@ -1,0 +1,27 @@
+# The C++ API reference of the documentation site: the core's Doxyfile,
+# restricted to the plugin sources and written where conf.py publishes it
+# (/api/cpp/). Run from docs/site by build.sh.
+@INCLUDE               = ../Doxyfile
+PROJECT_NAME           = "LOTUSim C++ API"
+PROJECT_LOGO           =
+PROJECT_BRIEF          = "Gazebo plugins of the core simulator"
+INPUT                  = ../../systems
+FILE_PATTERNS          = *.hpp *.hh *.h *.cpp *.cc
+RECURSIVE              = YES
+EXCLUDE                =
+EXCLUDE_PATTERNS       = */test/* */tests/*
+USE_MDFILE_AS_MAINPAGE =
+EXTRACT_ALL            = YES
+OUTPUT_LANGUAGE        = English
+OUTPUT_DIRECTORY       = _cpp_api/api
+HTML_OUTPUT            = cpp
+CREATE_SUBDIRS         = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+# Class and include graphs need graphviz; the reference reads without them.
+HAVE_DOT               = NO
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+QUIET                  = YES
+WARNINGS               = NO
+WARN_IF_UNDOCUMENTED   = NO

@@ -114,6 +114,11 @@ Owns the vessel name↔entity maps and exposes `addEntity()` / `moveEntity()` / 
 
 ### `ScenarioManager` + `ScenarioParser` : YAML Scenarios
 
+> **UI scenarios only.** This section is about the YAML scenarios of the
+> LOTUSim web UI (`lotusim-ui`, `assets/scenarios/`). The generic scenario
+> workspace does not use them: its scenarios are JSON files, and its agents
+> spawn their vehicles through the `mas_cmd` actions above.
+
 `ScenarioManager` is a plain helper owned by `MultiAgentSystem`. It exposes the `launch_scenario` / `stop_scenario` services:
 
 - **`launch_scenario`** - looks up `$LOTUSIM_SCENARIOS_PATH/<request.data>` (falling back to `~/lotusim_ws/src/LOTUSim/assets/scenarios` with a warning if the env var isn't set), refuses if a scenario is already running, parses the YAML via `ScenarioParser`, applies `reference_position` to the world's spherical-coordinates origin, then spawns every agent via `EntitySpawner`.

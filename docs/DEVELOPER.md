@@ -6,8 +6,10 @@ only want to run scenarios, you want the scenario workspace
 
 This repository is the core: the Gazebo system plugins, the physics bridge to
 xdyn, the ROS 2 message definitions, the vehicle models and the worlds.
-It contains no mission logic and no scenario — those live in the scenario
-workspace, in Python.
+It contains no mission logic. The commands below (`mise run build`,
+`mise run sim`) are the core's own: they build it and start a world on its
+own. Generic scenarios are run from the scenario workspace, with
+`scenario_launch.sh`, which starts these same worlds for you.
 
 ## 1. What is in here
 
@@ -92,6 +94,14 @@ mise run sim --gui lotusim.world
 resource paths from the clone itself, so a build needs nothing exported in
 `~/.bashrc`.
 
+Every run writes its plugin logs to `$LOTUSIM_PATH/lotus_logs/<date>/`
+(`/tmp/lotus_logs/` when `LOTUSIM_PATH` is unset), one file per plugin.
+`LOTUSIM_LOG_LEVEL` (`trace`, `debug`, `info`, `warn`, `error`,
+`critical`, `off`) sets how much goes there and to the console; `mise.toml`
+defaults to `info` and keeps a level you export, `--debug` sets `debug`. On a demo machine set it to `off` so
+nothing is written. The folders are never deleted: clear `lotus_logs/` by
+hand from time to time.
+
 xdyn is not built here and not committed: the devshell takes it from lxdyn's
 published image. A change to a physics model such as the Ekman current is a
 change to lxdyn.
@@ -111,17 +121,17 @@ change to lxdyn.
   `AerialMAS`, not spawned by the main world's `MultiAgentSystem`.
 - **xdyn stalls on an incomplete command set.** If a vehicle's YAML declares
   actuator command keys, every step needs a complete command for them. A
-  vehicle with no declared actuator drifts happily with no command at all;
+  vehicle with no declared actuator drifts with no command at all;
   one with a declared propeller does not.
 - **`external forces:` is a sibling of the model, not a child of
   `dynamics:`.** Mis-indented in a vehicle YAML, xdyn parses it as empty and
   reports no error — every degree of freedom then stays frozen at its initial
-  value regardless of current. This has already happened more than once.
+  value regardless of current.
 
 ## 4. Verifying a change
 
 Test through the scenario workspace's `scenario_launch.sh` or through
-`lotusim run` / `mise run sim`, never through a bare `gz sim`: a bare run bypasses the
+`mise run sim`, never through a bare `gz sim`: a bare run bypasses the
 orchestration, the spawn path and the physics bridge that the change most
 likely affects.
 
@@ -136,4 +146,4 @@ all produce a simulation that starts normally and is wrong a minute later.
 |---|---|
 | `LOTUSim-generic-scenario` | Scenarios, agent classes, behaviour trees, the Python GNC pipeline |
 | `lxdyn` | The xdyn hydrodynamic solver, whose published image the devshell uses |
-| `LOTUSim-Unity-modules` | The Unity renderer that consumes `/<world>/poses` |
+| `LOTUSim-Energy` | The Unity project of the renderer, which draws `/<world>/poses` |

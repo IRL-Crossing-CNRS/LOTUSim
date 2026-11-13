@@ -1,5 +1,7 @@
 # Autonomous Navigation
 
+> **Status: design note.** The packages proposed here (`px4_offboard_autonav`, `aerial_navigation`) were not built. Offboard flight was implemented as the `px4_offboard_patrol` mission task of Generic Scenario, over MAVLink with pymavlink (`src/lotusim_sdk/lotusim_sdk/tasks/px4_offboard_patrol.py`); its usage is in `doc/PX4_DRONES.md`.
+
 Use **PX4 OFFBOARD** for realistic drone autonomy, and make the algorithm
 replaceable behind a small ROS 2 interface.
 

@@ -44,7 +44,7 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 SOURCES = {
     "core": (
         "https://github.com/IRL-Crossing-CNRS/LOTUSim",
-        ["README.md", "CONTRIBUTING.md", "docs", "examples"],
+        ["README.md", "CONTRIBUTING.md", "docs", "examples", "systems"],
         "core",
     ),
     "scenario": (
@@ -64,7 +64,7 @@ SOURCES = {
     ),
     "unity": (
         "https://github.com/IRL-Crossing-CNRS/LOTUSim-Energy",
-        ["README.md", "CONTRIBUTING.md"],
+        ["README.md", "CONTRIBUTING.md", "doc", "Assets/Turbine_wake.md", "Assets/Submarine_Cables.md"],
         "unity",
     ),
 }
@@ -113,6 +113,20 @@ def extract_git(repo: str, ref: str, paths, dest: Path):
     ).stdout
     with tarfile.open(fileobj=BytesIO(archive)) as tar:
         tar.extractall(dest, filter="data")
+
+
+def extract_python_api(repo: str, ref: str):
+    """The scenario workspace's SDK sources, for the Python API reference."""
+    archive = subprocess.run(
+        ["git", "-C", repo, "archive", "--format=tar", ref, "--", "src/lotusim_sdk/lotusim_sdk"],
+        check=True, capture_output=True,
+    ).stdout
+    dest = OUT / ".api" / "python"
+    with tarfile.open(fileobj=BytesIO(archive)) as tar:
+        members = [m for m in tar.getmembers() if m.name.endswith(".py")]
+        for m in members:
+            m.name = m.name.removeprefix("src/lotusim_sdk/")
+        tar.extractall(dest, members=members, filter="data")
 
 
 IMG_RE = re.compile(r"""!\[[^\]]*\]\(([^)\s]+)|<img[^>]+src=["']([^"']+)["']""")
@@ -279,6 +293,91 @@ def add_page_contents(dest: Path):
         md.write_text("\n".join(lines[:at] + block + lines[at:]), encoding="utf-8")
 
 
+def nest_subpages(dest: Path):
+    """A README is the parent page of the READMEs in its sub-folders (the
+    sensors page of the radar page): a hidden toctree puts them under it in
+    the menu."""
+    # The repository's own README is not a parent: its sub-pages have their
+    # place in the site's menu.
+    readmes = sorted(md for md in dest.rglob("README.md") if md.parent != dest)
+    folders = {md.parent for md in readmes}
+
+    def parent_page(md: Path):
+        return next((d for d in md.parent.parents if d in folders), None)
+
+    for md in readmes:
+        children = [c for c in readmes if parent_page(c) == md.parent]
+        if children:
+            toc = [c.relative_to(md.parent).with_suffix("").as_posix() for c in children]
+            with md.open("a", encoding="utf-8") as f:
+                f.write("\n".join(["", "```{toctree}", ":hidden:", "", *toc, "```", ""]))
+
+
+# Which way of running LOTUSim a page is about, shown in a banner under its
+# title (see "What LOTUSim is made of"). The first matching prefix wins; a
+# page that matches none gets no banner.
+CONTEXTS = {
+    "scenario": ("Generic scenario",
+                 "Scenarios of the generic scenario workspace, described in a JSON file and run "
+                 "with `scenario_launch.sh`."),
+    "core": ("Core simulator alone",
+             "The core's own commands (`lotusim run`, `lotusim_core sim`, `mise run sim`): a world "
+             "without the generic scenario."),
+    "both": ("Core simulator, in every way of running it",
+             "Part of the core: it works the same in a generic scenario, under the core's own "
+             "commands and in UI scenarios."),
+}
+PAGE_CONTEXT = [
+    ("scenario/", "scenario"),
+    ("core/README.md", "core"),
+    ("core/docs/DEVELOPER.md", "core"),
+    ("core/examples/", "core"),
+    ("core/docs/", "both"),
+    ("core/systems/", "both"),
+]
+
+
+def add_context_banners():
+    for md in sorted(OUT.rglob("*.md")):
+        rel = md.relative_to(OUT).as_posix()
+        context = next((c for prefix, c in PAGE_CONTEXT if rel.startswith(prefix)), None)
+        if context is None:
+            continue
+        title, text = CONTEXTS[context]
+        lines = md.read_text(encoding="utf-8").split("\n")
+        at = next((i + 1 for i, line in enumerate(lines) if line.startswith("# ")), 0)
+        banner = ["", f"```{{admonition}} {title}", f":class: lotusim-context lotusim-context-{context}", "",
+                  text, "```", ""]
+        md.write_text("\n".join(lines[:at] + banner + lines[at:]), encoding="utf-8")
+
+
+# Folders whose pages form a tree of their own (the scenario reference). The
+# README is the root; `<name>_<part>.md` sits under `<name>.md` when that page
+# exists (tasks_gnc under tasks), every other page under the README. Children
+# keep the order in which their parent links to them.
+PAGE_TREES = ["scenario/doc/scenario"]
+MD_LINK = re.compile(r"\]\(([A-Za-z0-9_.-]+\.md)(?:#[^)]*)?\)")
+
+
+def nest_page_trees():
+    for folder in PAGE_TREES:
+        root = OUT / folder
+        if not (root / "README.md").exists():
+            continue
+        pages = {md.name for md in root.glob("*.md")}
+        parents = {}
+        for name in pages - {"README.md"}:
+            stem = name[:-3].split("_")[0] + ".md"
+            parents[name] = stem if stem != name and stem in pages else "README.md"
+        for parent in sorted(set(parents.values())):
+            text = (root / parent).read_text(encoding="utf-8")
+            mine = [n for n in parents if parents[n] == parent]
+            linked = [n for n in dict.fromkeys(MD_LINK.findall(text)) if n in mine]
+            children = linked + sorted(set(mine) - set(linked))
+            with (root / parent).open("a", encoding="utf-8") as f:
+                f.write("\n".join(["", "```{toctree}", ":hidden:", "", *[c[:-3] for c in children], "```", ""]))
+
+
 def first_heading(md: Path) -> str:
     for line in md.read_text(encoding="utf-8").splitlines():
         if line.startswith("# "):
@@ -360,11 +459,14 @@ def main():
                 print(f"collect: {name}: LOTUSIM_DOCS_{name.upper()}_REPO unset, skipped", file=sys.stderr)
                 continue
             extract_git(repo, ref, paths, dest)
+        if name == "scenario":
+            extract_python_api(repo, ref)
         if dest.exists():
             fetch_referenced_images(None if (name == "core" and not env(name, "REPO")) else repo, ref, dest)
             drop_shared_sections(dest)
             add_page_contents(dest)
             rewrite_links(dest, url, ref)
+            nest_subpages(dest)
             found.append(name)
             print(f"collect: {name}: {sum(1 for _ in dest.rglob('*.md'))} pages from {ref}")
     # Images that pages show through raw HTML (<img> inside a <p>) are not
@@ -378,6 +480,8 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(img, target)
 
+    add_context_banners()
+    nest_page_trees()
     interfaces_root = OUT / ".core_interfaces" if (OUT / ".core_interfaces").exists() else CORE_ROOT
     write_message_reference(interfaces_root)
     write_install_page(found)

@@ -1,5 +1,23 @@
 # Unity troubleshooting
 
+## Low frame rate on Ubuntu: log in with Xorg
+
+**Symptom.** The Unity player (or the Editor) runs at a low frame rate,
+stutters, or lags behind the simulation, on Ubuntu.
+
+**Why.** Ubuntu opens a Wayland session by default. The Unity player renders
+through X11 by default, so under Wayland it goes through the XWayland compatibility layer,
+which costs frame rate.
+
+**Fix: use an Xorg session.** Log out; on the login screen, select your user,
+click the gear icon at the bottom right and choose **Ubuntu on Xorg**, then
+log in. Ubuntu remembers the choice for the next logins. To check the session
+you are in:
+
+```sh
+echo $XDG_SESSION_TYPE   # x11 under Xorg, wayland otherwise
+```
+
 ## The Unity Editor crashes when opening the project (Linux, NVIDIA)
 
 **Symptom.** The LOTUSim-Energy project crashes the Unity Editor almost every
@@ -16,8 +34,8 @@ GfxDeviceVK::AdjustPrimarySwapChain
 ```
 
 **Why.** The project uses the High Definition Render Pipeline (HDRP), which
-needs Vulkan on Linux. Unity `2022.3.18f1` is an older release; with a recent
-NVIDIA driver (observed with 595.99 on Ubuntu 24.04, an RTX 4090 laptop GPU
+needs Vulkan on Linux. With Unity `2022.3.18f1`, the project's earlier version, and a
+recent NVIDIA driver (observed with 595.99 on Ubuntu 24.04, an RTX 4090 laptop GPU
 and an X11 session), the NVIDIA driver crashes when Unity creates the window's
 Vulkan swapchain. The project, its assets and the amount of memory are not
 involved, which is why the same project may open fine on another machine.
@@ -27,7 +45,7 @@ integrated GPU next to the NVIDIA one, start Unity from a terminal and tell it
 to render on that device:
 
 ```sh
-~/Unity/Hub/Editor/2022.3.18f1/Editor/Unity \
+~/Unity/Hub/Editor/6000.6.6f1/Editor/Unity \
   -projectPath <path to the Unity project> \
   -force-vulkan -force-device-index 0
 ```
@@ -58,9 +76,8 @@ heavy scenes.
   variables did not change anything.
 
 **Longer-term fixes.** Installing another NVIDIA driver branch (for example
-the 570 or 580 production branch), or upgrading to a recent `2022.3.x` patch
-release of Unity, are the two real fixes. Neither has been tested here, so it
-is not known which one resolves the crash.
+the 570 or 580 production branch) is the fix to try; it has not been tested
+here. Whether Unity 6.6 still crashes on these drivers has not been checked either.
 
 ## Unity cannot find Blender
 

@@ -283,3 +283,60 @@ body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > ul > li 
 body:has(.lotusim-numbered) .toc-drawer .toc-tree > ul > li > ul > li > ul > li > a::before {
   content: counter(lotusim-side1) "." counter(lotusim-side2) " ";
 }
+
+/* Which way of running LOTUSim a page is about (collect.py, CONTEXTS). */
+.admonition.lotusim-context {
+  --lotusim-context: var(--lotusim-step-2);
+  border-left: 4px solid var(--lotusim-context);
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 0.9em;
+}
+.admonition.lotusim-context > .admonition-title {
+  background: color-mix(in srgb, var(--lotusim-context) 14%, transparent);
+}
+.admonition.lotusim-context > .admonition-title::before {
+  background-color: var(--lotusim-context);
+}
+.admonition.lotusim-context-scenario { --lotusim-context: var(--lotusim-step-1); }
+.admonition.lotusim-context-core { --lotusim-context: var(--lotusim-step-3); }
+.admonition.lotusim-context-both { --lotusim-context: var(--lotusim-step-2); }
+.admonition.lotusim-context-ui { --lotusim-context: var(--lotusim-extra); }
+
+/* Figures in the pages: a standalone image (a paragraph holding only an image)
+   stays modest and centred, and the italic line under it reads as a caption.
+   Wide strips (several pictures side by side, plots) get more room. */
+article p > img:only-child,
+article p > a:only-child > img {
+  display: block;
+  max-width: min(100%, 460px);
+  max-height: 360px;
+  width: auto;
+  height: auto;
+  margin: 1.2rem auto 0.3rem;
+  border-radius: 6px;
+}
+article p > img:only-child[src*="weather_scale"],
+article p > img:only-child[src*="turbine_power"] {
+  max-width: min(100%, 680px);
+}
+article p:has(> img:only-child) + p {
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--color-foreground-secondary);
+  margin: 0 auto 1.4rem;
+  max-width: 560px;
+}
+article figure.lotusim-figure img {
+  border-radius: 6px;
+}
+article figure.lotusim-figure figcaption {
+  font-size: 0.85em;
+  color: var(--color-foreground-secondary);
+}
+.sd-container-fluid img {
+  max-height: 220px;
+  width: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}

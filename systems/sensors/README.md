@@ -1,112 +1,35 @@
 # Sensors
 
-The `sensors` subsystem provides custom Gazebo sensors for LOTUSim vessels:  AIS, IMU, radar, and subsea pressure. All of them share a common base class (`lotusim_sensor_base`) and are instantiated by a single world plugin (`lotusim_sensor_plugin`), which handles SDF loading, per-tick updates, rate limiting, and runtime on/off control so individual sensors only need to implement their own measurement logic.
+The sensors a vehicle can carry: what each one measures, the SDF that puts
+it on a vehicle, and the topic it publishes. They are declared in the
+vehicle's SDF model, inside a link, as `<sensor type="custom" gz:type="...">`.
 
----
-
-## Architecture Overview
-
-```
-┌───────────────────────────────────────────────────────────────────┐
-│           LotusimSensorPlugin : Gazebo World Plugin               │
-│           (one instance for the entire simulation world)          │
-│                                                                   │
-│  PostUpdate                                                       │
-│    EachNew<CustomSensor>     ──► dispatch on gz:type              │
-│                                    ──► CreateSensor<T>()          │
-│    EachRemoved<CustomSensor> ──► drop from m_entity_sensor_map    │
-│                                                                   │
-│    for each tracked sensor (if not paused):                       │
-│      check PowerStateRegistry ──► skip if powered off             │
-│      refresh Position / Orientation / LatLong from ECM            │
-│      ──► sensor->UpdateSensor()                                   │
-│                                                                   │
-│              ┌────────────────────────────────┐                   │
-│              │         CustomSensor           │ (one per <sensor>)│
-│              │   ◄── AISSensor                │                   │
-│              │   ◄── IMUSensor                │                   │
-│              │   ◄── RadarSensor              │                   │
-│              │   ◄── SubseaPressureSensor     │                   │
-│              │   ◄── users implementation     │                   │
-│              └────────────────────────────────┘                   │
-└───────────────────────────────────────────────────────────────────┘
-```
-
-Each `<sensor type="custom" gz:type="...">` element found in a vessel's SDF becomes one `CustomSensor` instance, owned by `LotusimSensorPlugin` for the lifetime of that sensor entity.
-
----
-
-## Class Hierarchy
-
-```
-LotusimSensorPlugin  (Gazebo world System plugin)
-        │
-        └── owns one CustomSensor per <sensor> entity
-                    │
-                    CustomSensor  (abstract, extends gz::sensors::Sensor)
-                        ├── AISSensor
-                        ├── IMUSensor
-                        ├── RadarSensor
-                        ├── SubseaPressureSensor
-                        └── users implementation
-```
-
----
-
-## Components
-
-### `LotusimSensorPlugin` : World Plugin
-
-The top-level Gazebo system plugin - declared once in the world SDF.
+The world must load the sensor plugin once, which the worlds of
+`assets/worlds/` already do:
 
 ```xml
 <plugin filename="lotusim_sensor_plugin" name="lotusim::sensor::LotusimSensorPlugin">
 </plugin>
 ```
 
-- **`Configure()`** - creates the plugin's ROS 2 node and logger, and subscribes to Gazebo's `/collision` topic to aggregate contacts for the `collisions` output topic.
-- **`PostUpdate()`**
-  - `EachNew<CustomSensor, ParentEntity>` → internal `EachNew()` reads the sensor's `gz:type` and instantiates the matching subclass via `CreateSensor<T>()`, then stores it in `m_entity_sensor_map`.
-  - `EachRemoved<CustomSensor>` → drops the corresponding entry from `m_entity_sensor_map`.
-  - For every tracked sensor, if the simulation isn't paused:
-    1. Looks up the sensor's power state in `PowerStateRegistry` (keyed `<vessel>/<sensor>`) - skips the update if the power subsystem has switched it off. Defaults to `true` (always on) if no power manager is present.
-    2. Refreshes the sensor's world position, orientation, and lat/long from the ECM.
-    3. Calls `sensor->UpdateSensor(info, ecm)`.
-  - Publishes aggregated collisions on `collisions` (`lotusim_sensor_msgs/msg/Collisions`).
+Every sensor can be turned off and on at runtime with the service
+`/<world>/<vessel>/<sensor>/change_state` (`lotusim_sensor_msgs/srv/ActivateSensor`).
 
----
+How the sensors are implemented, and how to add one:
+[Sensors: implementation](DEVELOPER.md).
 
-### `CustomSensor` : Abstract Base (`lotusim_sensor_base`)
+## The sensors
 
-Every sensor type derives from `CustomSensor`, itself a `gz::sensors::Sensor`. It provides the shared plumbing so each concrete sensor only implements its own physics and message.
-
-**Provided for free by the base class:**
-
-| Feature | Description |
-|---|---|
-| `update_rate` / `is_on` SDF parsing | Parsed once in `Load()` |
-| `EnableMeasurement(now)` | Rate-limits updates to `update_rate` Hz and respects the on/off state - call this as a guard at the top of `UpdateSensor()` |
-| `<vessel>/<sensor>/change_state` ROS 2 service | Lets external code turn the sensor on/off at runtime |
-| `noise_sigma` / `noise_amplitude` SDF parsing + `GetGaussianNoise()` | Ready-to-use Gaussian noise helper |
-| `Position()` / `LatLong()` / `Orientation()` | Called every tick by the plugin, so `m_position` / `m_lat_long` / `m_quad` are always current |
-
-**What each subclass must implement:**
-
-| Method | Purpose |
-|---|---|
-| `CustomSensorLoad(sdf)` | Parse sensor-specific SDF parameters, create the ROS 2 publisher(s) |
-| `UpdateSensor(info, ecm)` | Called at up to `update_rate` Hz - compute and publish a measurement |
-
----
-
-## Existing Sensors
+Each sensor has its own page: what it measures, every parameter, its output and its limits.
 
 | Sensor | `gz:type` | Publishes | Notes |
 |---|---|---|---|
-| AIS | `ais` | `<vessel>/<sensor>/ais` (`lotusim_sensor_msgs/msg/AIS`) | Speed-over-ground and heading, derived from the `base_link`'s world velocity |
-| IMU | `imu` | `<vessel>/<sensor>/IMU` (`sensor_msgs/msg/Imu`) | Orientation, angular velocity, linear acceleration |
-| Radar | `radar` | see [Radar Sensor README](radar_sensor/README.md) | Needs a co-located `gpu_lidar` sensor on the same link |
-| Subsea Pressure | `subsea_pressure` | `<vessel>/<sensor>/pressure_sensor` (`lotusim_sensor_msgs/msg/PressureDepth`) | Pressure derived from depth; can optionally back-estimate depth from pressure |
+| [AIS](ais_sensor/README.md) | `ais` | `<vessel>/<sensor>/ais` (`lotusim_sensor_msgs/msg/AIS`) | Speed-over-ground and heading, derived from the `base_link`'s world velocity |
+| [IMU](imu_sensor/README.md) | `imu` | `<vessel>/<sensor>/IMU` (`sensor_msgs/msg/Imu`) | Orientation, angular velocity, linear acceleration |
+| [Radar](radar_sensor/README.md) | `radar` | see [Radar Sensor README](radar_sensor/README.md) | Needs a co-located `gpu_lidar` sensor on the same link |
+| [Battery](battery_sensor/README.md) | `battery` | `<vessel>/battery/state` (`sensor_msgs/msg/BatteryState`), also on gz `/model/<vessel>/battery/<battery_name>/state` | Linear battery model drained by the RPM commands of `vessel_cmd_array` |
+| [Sector scanner](sector_scanner_sensor/README.md) | `sector_scanner` | `<vessel>/<sensor>/scan` (`lotusim_sensor_msgs/msg/SectorScan`) | Sweeps fixed azimuth sectors and reports the models in range; purely geometric, no occlusion. `scripts/sector_scanner_viewer.py` plots it |
+| [Subsea pressure](subsea_pressure_sensor/README.md) | `subsea_pressure` | `<vessel>/<sensor>/pressure_sensor` (`lotusim_sensor_msgs/msg/PressureDepth`) | Pressure derived from depth; can optionally back-estimate depth from pressure |
 
 Minimal SDF for AIS and IMU:
 
@@ -136,120 +59,33 @@ Subsea pressure adds its own parameters:
 </sensor>
 ```
 
-For radar's setup (it needs a paired LiDAR sensor and has several tuning parameters), see the [Radar Sensor README](radar_sensor/README.md).
-
-Every sensor also accepts an optional `<lotusim_power>` block to draw from the vessel's battery - see the [Power Subsystem README](../../power_subsystem/README.md#add-a-sensor).
-
----
-
-## Adding a New Sensor
-
-A new sensor is a new ROS 2 package under `systems/sensors/` that subclasses `CustomSensor`, plus a small amount of wiring in `lotusim_sensor_plugin` so the plugin knows how to instantiate it. `imu_sensor` is the simplest existing example to copy from.
-
-**1. Create the package**
-
-```
-systems/sensors/my_sensor/
-├── CMakeLists.txt
-├── package.xml
-├── include/my_sensor/my_sensor.hpp
-└── src/my_sensor.cpp
-```
-
-Model `CMakeLists.txt` on `imu_sensor/CMakeLists.txt`: it needs `find_package(lotusim_sensor_base REQUIRED)`, `find_package(lotusim_common REQUIRED)`, plus whatever message package you publish, and builds a single shared library from your `.cpp` file(s).
-
-**2. Subclass `CustomSensor`**
-
-```cpp
-// my_sensor.hpp
-#include "lotusim_sensor_base/custom_sensor.hpp"
-#include "my_msgs/msg/my_reading.hpp"
-
-namespace lotusim::sensor {
-
-class MySensor : public CustomSensor {
-public:
-    MySensor(
-        std::shared_ptr<spdlog::logger> logger,
-        rclcpp::Node::SharedPtr node,
-        const gz::sim::Entity& vessel_entity,
-        const gz::sim::Entity& sensor_entity,
-        const std::string& parent_name,
-        const std::string& sensor_name);
-
-    ~MySensor();
-
-    virtual bool UpdateSensor(
-        const gz::sim::UpdateInfo& _info,
-        const gz::sim::EntityComponentManager& _ecm) final;
-
-private:
-    virtual bool CustomSensorLoad(const sdf::Sensor& _sdf) final;
-
-    rclcpp::Publisher<my_msgs::msg::MyReading>::SharedPtr m_sensor_pub;
-};
-
-}  // namespace lotusim::sensor
-```
-
-**3. Implement `CustomSensorLoad()`** - parse any sensor-specific SDF parameters with `GetSDFParam<T>()` and create your publisher. Keep the `<vessel>/<sensor>/<topic>` naming convention used by every existing sensor:
-
-```cpp
-bool MySensor::CustomSensorLoad(const sdf::Sensor& _sdf)
-{
-    sdf::ElementPtr sdfptr = _sdf.Element();
-    GetSDFParam<double>(sdfptr, "my_param", m_my_param, /*default=*/1.0);
-
-    m_sensor_pub = m_ros_node->create_publisher<my_msgs::msg::MyReading>(
-        m_vessel_name + "/" + m_sensor_name + "/my_reading",
-        rclcpp::QoS(1));
-    return true;
-}
-```
-
-**4. Implement `UpdateSensor()`** - guard with `EnableMeasurement()`, read whatever you need from the ECM (or the base class's `m_position` / `m_lat_long` / `m_quad`, already refreshed for you every tick), publish, and stamp `m_last_measurement_time`:
-
-```cpp
-bool MySensor::UpdateSensor(
-    const gz::sim::UpdateInfo& _info,
-    const gz::sim::EntityComponentManager&)
-{
-    if (!EnableMeasurement(_info.simTime))
-        return false;
-
-    my_msgs::msg::MyReading msg;
-    msg.header = lotusim::common::generateHeaderMessage(_info.simTime);
-    msg.value = m_my_param + GetGaussianNoise(m_noise_amp);
-
-    m_sensor_pub->publish(msg);
-    m_last_measurement_time = _info.simTime;
-    return true;
-}
-```
-
-**5. Wire it into `lotusim_sensor_plugin`**:
-
-- Add `#include "my_sensor/my_sensor.hpp"` to `lotusim_sensor_plugin.hpp`.
-- Add a branch in `LotusimSensorPlugin::EachNew()` (`lotusim_sensor_plugin.cpp`):
-  ```cpp
-  } else if (type == "my_sensor") {
-      sensor = CreateSensor<MySensor>(
-          data, model_entity, _entity, model_name, sensor_name);
-  }
-  ```
-- In `lotusim_sensor_plugin/CMakeLists.txt`, add `find_package(my_sensor REQUIRED)` and list `my_sensor` in both `ament_target_dependencies()` and `ament_export_dependencies()`.
-
-> **Note:** sensor type resolution is a hardcoded `if / else if` chain on the `gz:type` string, not a runtime plugin registry. Every new sensor type means editing and rebuilding `lotusim_sensor_plugin` itself - it's not something you can drop in as an independent, self-registering package.
-
-**6. Declare it on a vessel**
+Battery and sector scanner (defaults shown for the scanner; the battery's full
+parameter list is in `battery_sensor/include/battery_sensor/battery_sensor.hpp`):
 
 ```xml
-<sensor name="my_sensor_1" type="custom" gz:type="my_sensor">
-    <update_rate>1</update_rate>
-    <my_param>2.5</my_param>
+<!-- from assets/models/bluerov2_heavy/model-battery.sdf -->
+<sensor name="battery_sensor" type="custom" gz:type="battery">
+    <battery_name>linear_battery</battery_name>  <!-- required -->
+    <voltage>48.0</voltage>                      <!-- V, required -->
+    <open_circuit_voltage_constant_coef>50.4</open_circuit_voltage_constant_coef>
+    <open_circuit_voltage_linear_coef>-3.1</open_circuit_voltage_linear_coef>
+    <capacity>60.0</capacity>                    <!-- Ah, required, > 0 -->
+    <resistance>0.05</resistance>                <!-- Ohm -->
+    <smooth_current_tau>2.0</smooth_current_tau> <!-- s -->
+    <power_load>20.0</power_load>                <!-- W, constant baseline draw -->
+    <start_draining>false</start_draining>
+    <fix_issue_225>true</fix_issue_225>
+</sensor>
+
+<sensor name="sector_scanner" type="custom" gz:type="sector_scanner">
+    <update_rate>10</update_rate>
+    <sector_width_deg>45</sector_width_deg>           <!-- rounded so it divides 360 -->
+    <dwell_time_s>1.0</dwell_time_s>                  <!-- time spent on each sector -->
+    <max_range>500</max_range>                        <!-- m -->
+    <vertical_beamwidth_deg>30</vertical_beamwidth_deg>
 </sensor>
 ```
 
-The `gz:type` value must exactly match the string compared in step 5.
+For radar's setup (it needs a paired LiDAR sensor and has several tuning parameters), see the [Radar Sensor README](radar_sensor/README.md).
 
-**7. Rebuild and relaunch** - `lotusim clean_build` (or `colcon build`, depending on which workspace you're in), then re-run your scenario.
+Every sensor also accepts an optional `<lotusim_power>` block to draw from the vessel's battery - see the [Power Subsystem README](../../power_subsystem/README.md#add-a-sensor).

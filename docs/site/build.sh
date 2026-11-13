@@ -30,6 +30,15 @@ export LOTUSIM_DOCS_PREVIEW_BANNER="${LOTUSIM_DOCS_PREVIEW_BANNER-Local preview,
 
 .venv/bin/python collect.py
 
+# The C++ API reference, from the headers' comments. Skipped, with the page
+# saying so, where doxygen is not installed.
+rm -rf _cpp_api
+if command -v doxygen >/dev/null 2>&1; then
+  mkdir -p _cpp_api/api && doxygen Doxyfile.site
+else
+  echo "build: doxygen not found, C++ API reference skipped" >&2
+fi
+
 case "${1:-html}" in
   html)
     .venv/bin/sphinx-build -b html -q . _build/html
@@ -38,7 +47,7 @@ case "${1:-html}" in
   serve)
     .venv/bin/sphinx-autobuild . _build/html \
       --host 127.0.0.1 --port "${PORT:-8000}" \
-      --ignore "_collected/*" --ignore ".venv/*"
+      --ignore "_collected/*" --ignore ".venv/*" --ignore "reference/*" --ignore "_cpp_api/*"
     ;;
   *)
     echo "usage: $0 [html|serve]" >&2
