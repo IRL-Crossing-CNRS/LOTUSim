@@ -22,7 +22,6 @@
 #include <thread>
 #include <cmath>
 #include <unordered_map>
-#include <unordered_set>
 #include <chrono>
 
 #include "lotusim_common/common.hpp"
@@ -265,10 +264,10 @@ protected:
 
 private:
     /**
-     * @brief vessels are warned about the missing spherical coordinates,
-     * this warning is only logged once per vessel
+     * @brief Whether the world's missing spherical coordinates were warned
+     * about, this warning is only logged once
      */
-    std::unordered_set<std::string> m_geo_warned;
+    bool m_geo_warned{false};
 
     std::shared_ptr<rclcpp::executors::MultiThreadedExecutor> m_executor;
 

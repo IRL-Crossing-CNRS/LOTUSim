@@ -32,6 +32,7 @@
 #include <list>
 #include <sdf/Sensor.hh>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 
@@ -45,7 +46,7 @@
 #include "lotusim_sensor_msgs/msg/collisions.hpp"
 #include "radar_sensor/radar_sensor.hpp"
 #include "sector_scanner_sensor/sector_scanner.hpp"
-#include <thread>
+#include "lotusim_common/spin_thread.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
@@ -156,23 +157,10 @@ private:
 
     rclcpp::Node::SharedPtr m_ros_node;
 
-    /**
-     * @brief Dedicated executor + thread servicing m_ros_node.
-     *
-     * Every sensor of the world shares this node, so draining it with
-     * rclcpp::spin_some() from a sensor's update ran once per sensor per
-     * step: each call builds a SingleThreadedExecutor, a wait set and a guard
-     * condition, on Gazebo's own thread. With 127 battery sensors that took
-     * the world's real-time factor from 1.00 to 0.03. It also crashed the
-     * server on exit — after rcl_shutdown() the call throws, and the
-     * exception escapes Gazebo's update callback into std::terminate.
-     *
-     * A spinning thread consumes every message on arrival instead, and
-     * returns on its own when the context shuts down. Sensor callbacks
-     * already guard their state (see BatterySensor::m_rpm_mutex).
-     */
+    //executor servicing m_ros_node, spun on its own thread so sensors never
+    //drain the node from Gazebo's update
     rclcpp::executors::SingleThreadedExecutor::SharedPtr m_ros_executor;
-    std::shared_ptr<std::thread> m_ros_node_thread;
+    std::unique_ptr<lotusim::common::SpinThread> m_ros_node_thread;
 
     std::unordered_map<gz::sim::Entity, std::shared_ptr<CustomSensor>>
         m_entity_sensor_map;

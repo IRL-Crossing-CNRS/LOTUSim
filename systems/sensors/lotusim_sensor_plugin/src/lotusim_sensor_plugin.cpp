@@ -16,12 +16,7 @@ LotusimSensorPlugin::LotusimSensorPlugin() {}
 
 LotusimSensorPlugin::~LotusimSensorPlugin()
 {
-    if (m_ros_executor) {
-        m_ros_executor->cancel();
-    }
-    if (m_ros_node_thread && m_ros_node_thread->joinable()) {
-        m_ros_node_thread->join();
-    }
+    m_ros_node_thread.reset();
 }
 
 void LotusimSensorPlugin::Configure(
@@ -48,21 +43,9 @@ void LotusimSensorPlugin::Configure(
             "collisions",
             rclcpp::QoS(10));
 
-    // Service every sensor's subscriptions on their own thread, so no sensor
-    // has to drain the shared node from Gazebo's update (see m_ros_executor
-    // doc in the header). Mirrors PhysicsInterfacePlugin's node-thread
-    // pattern.
-    if (rclcpp::ok()) {
-        m_ros_executor =
-            std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
-        m_ros_executor->add_node(m_ros_node);
-        m_ros_node_thread = std::make_shared<std::thread>(
-            [this]() { m_ros_executor->spin(); });
-    } else {
-        m_logger->error(
-            "LotusimSensorPlugin::Configure: RCLCPP context shutdown.");
-    }
-
+    m_ros_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    m_ros_executor->add_node(m_ros_node);
+    m_ros_node_thread = std::make_unique<lotusim::common::SpinThread>(*m_ros_executor);
     m_logger->info(
         "LotusimSensorPlugin::Configure: LotusimSensorPlugin successfully startup.");
 }
@@ -242,11 +225,15 @@ void LotusimSensorPlugin::PostUpdate(
     _ecm.EachRemoved<gz::sim::components::CustomSensor>(
         [&](const gz::sim::Entity& _entity,
             const gz::sim::components::CustomSensor*) -> bool {
-            if (m_entity_sensor_map.erase(_entity) == 0) {
+            auto it = m_entity_sensor_map.find(_entity);
+            if (it == m_entity_sensor_map.end()) {
                 m_logger->error(
-                    "LotusimSensorPlugin::PreUpdate: Sensor entity [{}] removed but not found in system",
+                    "LotusimSensorPlugin::PostUpdate: Sensor entity [{}] removed but not found in system",
                     _entity);
+                return true;
             }
+            it->second->Shutdown();
+            m_entity_sensor_map.erase(it);
             return true;
         });
 
@@ -363,6 +350,14 @@ bool LotusimSensorPlugin::EachNew(
                 model_name,
                 sensor_name);
         } else {
+            return true;
+        }
+
+        if (!sensor) {
+            m_logger->error(
+                "LotusimSensorPlugin::EachNew: Failed to create sensor [{}/{}]",
+                model_name,
+                sensor_name);
             return true;
         }
 

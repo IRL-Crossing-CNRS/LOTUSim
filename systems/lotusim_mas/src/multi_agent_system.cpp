@@ -470,6 +470,17 @@ void MultiAgentSystem::publishPose(
         static_cast<uint32_t>(simTimeNs % 1000000000);
     array_msg.header.frame_id = "world";
 
+    // Geo conversion depends on the world, not on any individual vessel.
+    if (!m_geo_warned &&
+        !_ecm.Component<gz::sim::components::SphericalCoordinates>(
+            m_world_entity)) {
+        m_geo_warned = true;
+        m_logger->warn(
+            "MultiAgentSystem::publishPose: World '{}' has no spherical coordinates;"
+            " geo_point is left at (0, 0, 0) for all vessels.",
+            m_world_name);
+    }
+
     auto lock = m_entity_spawner->sharedLock();
     const auto& models = m_entity_spawner->vesselModels();
 
@@ -480,16 +491,12 @@ void MultiAgentSystem::publishPose(
             m_entity_spawner->getVesselLinearVelocity(entity);
         const double speedOverGround = std::hypot(vx, vy);
 
-        auto latLonEle =
-            lotusim::common::XYToLatLong(_ecm, pose.X(), pose.Y(), pose.Z());
-        if (!latLonEle) {
-            if (m_geo_warned.insert(name).second) {
-                m_logger->warn(
-                    "MultiAgentSystem::publishPose: Vessel '{}' has no spherical coordinates;"
-                    " geo_point is left at (0, 0, 0).",
-                    name);
-            }
-        }
+        auto latLonEle = lotusim::common::XYToLatLong(
+            _ecm,
+            m_world_entity,
+            pose.X(),
+            pose.Y(),
+            pose.Z());
 
         lotusim_msgs::msg::VesselPosition msg;
         msg.vessel_name = name;
