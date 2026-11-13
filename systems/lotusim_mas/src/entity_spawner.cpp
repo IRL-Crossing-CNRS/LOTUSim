@@ -18,11 +18,21 @@
 #include <gz/sim/components/Name.hh>
 #include <gz/sim/components/ParentEntity.hh>
 #include <gz/sim/components/Pose.hh>
+#include <sdf/ParserConfig.hh>
 #include <sdf/Root.hh>
 
 #include "lotusim_common/common.hpp"
 
 namespace lotusim::mas {
+
+// Temporarily silence sdf parse warnings for lotusim params.
+// TODO: Long term fix by changing sdformat
+static sdf::ParserConfig sdf_config()
+{
+    sdf::ParserConfig config = sdf::ParserConfig::GlobalConfig();
+    config.SetUnrecognizedElementsPolicy(sdf::EnforcementPolicy::LOG);
+    return config;
+}
 
 EntitySpawner::EntitySpawner(
     gz::sim::EntityComponentManager& ecm,
@@ -44,7 +54,7 @@ std::optional<std::tuple<uint16_t, std::string>> EntitySpawner::addEntity(
 
     if (msg.model_name.empty()) {
         // Full SDF provided directly in sdf_string.
-        errors = root.LoadSdfString(msg.sdf_string);
+        errors = root.LoadSdfString(msg.sdf_string, sdf_config());
     } else {
         // Load model from disk; optionally inject a <lotus_param> block.
         const char* asset_path = std::getenv("LOTUSIM_MODELS_PATH");
@@ -59,7 +69,7 @@ std::optional<std::tuple<uint16_t, std::string>> EntitySpawner::addEntity(
 
         if (msg.sdf_string.empty()) {
             // No lotus_param — load file as-is.
-            errors = root.Load(file_path + "/model.sdf");
+            errors = root.Load(file_path + "/model.sdf", sdf_config());
         } else {
             // Inject the <lotus_param> block into the loaded SDF.
             tinyxml2::XMLDocument sdf_doc;
@@ -120,7 +130,7 @@ std::optional<std::tuple<uint16_t, std::string>> EntitySpawner::addEntity(
                 "EntitySpawner::addEntity: Modified SDF:\n{}",
                 modified_sdf);
 
-            errors = root.LoadSdfString(modified_sdf);
+            errors = root.LoadSdfString(modified_sdf, sdf_config());
             if (!errors.empty()) {
                 for (const auto& err : errors)
                     m_logger->error(
@@ -151,11 +161,6 @@ std::optional<std::tuple<uint16_t, std::string>> EntitySpawner::addEntity(
     desired_name = resolveUniqueName(desired_name);
     model.SetName(desired_name);
 
-    {
-        std::unique_lock<std::shared_mutex> lock(m_variable_mutex);
-        m_vessels_models[desired_name] = msg.model_name;
-    }
-
     // Create entity in the simulation.
     gz::sim::Entity entity = m_creator->CreateEntities(&model);
     if (entity == gz::sim::kNullEntity) {
@@ -172,6 +177,7 @@ std::optional<std::tuple<uint16_t, std::string>> EntitySpawner::addEntity(
     // sees it; EachNew registers the same mapping again, idempotently.
     {
         std::unique_lock<std::shared_mutex> lock(m_variable_mutex);
+        m_vessels_models[desired_name] = msg.model_name;
         m_vessels_entities[desired_name] = entity;
         m_vessels_names[entity] = desired_name;
     }
@@ -363,7 +369,7 @@ void EntitySpawner::unregisterEntity(gz::sim::Entity entity)
         it->second);
 
     m_vessels_entities.erase(it->second);
-    m_vessels_models.erase(it->second); 
+    m_vessels_models.erase(it->second);
     m_vessels_names.erase(it);
 }
 
@@ -396,12 +402,8 @@ std::string EntitySpawner::resolveUniqueName(const std::string& desired) const
     if (desired.empty())
         return desired;
 
-    // A name is taken if it is already registered, or present in the ECM.
-    // The registry check matters when two CREATE_CMDs for the same class land
-    // in one PreUpdate batch: CreateEntities() does not make the first entity
-    // visible to EntityByComponents() until the ECM rebuilds its views next
-    // cycle, so the ECM alone would hand both the same name. addEntity
-    // registers each assigned name synchronously to close that window.
+    // Taken = registered or in the ECM
+    // the registry covers entities created earlier in this batch, which the ECM only shows in the next cycle
     auto taken = [&](const std::string& name) {
         {
             std::shared_lock<std::shared_mutex> lock(m_variable_mutex);
