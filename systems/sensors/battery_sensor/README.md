@@ -50,6 +50,8 @@ sensor is the simple one: one battery, drained by the thrusters' RPM.
 
 ## Limits
 
-- Only commands with an `(rpm)` key drain the battery. A vessel commanded in
-  thrust (the WAM-V's `(T)`) or kinematically never drains it.
+- Only commands with an `(rpm)` key drain the battery by the propellers. A
+  vessel commanded in thrust (the WAM-V's `(T)`), kinematically or by PX4 (its
+  motors are not on `vessel_cmd_array`) drains at `power_load` only, and only
+  with `start_draining` set.
 - The RPM polynomial is the same for every vessel.

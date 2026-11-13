@@ -1,30 +1,21 @@
 <?xml version="1.0"?>
-<sdf version="1.10">
+<sdf version="1.6">
   <model name="lrauv">
-    <static>false</static>
-
+    <!-- Body -->
     <link name="base_link">
       <pose>0 0 0 0 0 3.1415</pose>
-
-      <!-- ===================== -->
-      <!-- Inertial (REQUIRED)   -->
-      <!-- ===================== -->
-      <inertial>
+      <collision name="collision">
         <pose>0 0 0 0 0 0</pose>
-        <mass>108.0</mass>
-        <inertia>
-          <ixx>0.26</ixx>
-          <iyy>37.8</iyy>
-          <izz>37.8</izz>
-          <ixy>0</ixy>
-          <ixz>0</ixz>
-          <iyz>0</iyz>
-        </inertia>
-      </inertial>
-
-      <!-- ===================== -->
-      <!-- Visual                -->
-      <!-- ===================== -->
+        <geometry>
+          <mesh>
+            <uri>model://lrauv/meshes/tethys.dae</uri>
+            <submesh>
+              <name>Body</name>
+              <center>false</center>
+            </submesh>
+          </mesh>
+        </geometry>
+      </collision>
       <visual name="visual">
         <pose>0 0 0 0 0 0</pose>
         <geometry>
@@ -38,30 +29,32 @@
         </geometry>
       </visual>
 
-      <!-- ===================== -->
-      <!-- Collision             -->
-      <!-- ===================== -->
-      <collision name="collision">
-        <pose>0 0 0 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>2.0 0.3 0.3</size>
-          </box>
-        </geometry>
-      </collision>
-
-      <!-- ===================== -->
-      <!-- AIS Sensor            -->
-      <!-- ===================== -->
       <sensor name="ais_sensor" type="custom" gz:type="ais">
+        <lotusim_power>
+          <type>sensor</type>
+          <nominal_w>3.0</nominal_w>
+          <priority>4</priority>
+        </lotusim_power>
         <update_rate>1</update_rate>
         <noise_sigma>0.01</noise_sigma>
         <noise_amplitude>0.01</noise_amplitude>
       </sensor>
-
-      <!-- ===================== -->
-      <!-- Battery Sensor        -->
-      <!-- ===================== -->
+      <sensor name="imu_sensor" type="custom" gz:type="imu">
+        <lotusim_power>
+          <type>sensor</type>
+          <nominal_w>3.0</nominal_w>
+          <priority>4</priority>
+        </lotusim_power>
+        <always_on>1</always_on>
+        <update_rate>1000.0</update_rate>
+      </sensor>
+      <sensor name="sector_scanner_sensor" type="custom" gz:type="sector_scanner">
+        <update_rate>1</update_rate>
+        <sector_width_deg>45.0</sector_width_deg>
+        <vertical_beamwidth_deg>30.0</vertical_beamwidth_deg>
+        <dwell_time_s>1.0</dwell_time_s>
+        <max_range>500.0</max_range>
+      </sensor>
       <!-- Capacity and load are the LRAUV's own figures, not the 1 Ah / 200 W
            placeholders used by the other model-battery.sdf variants: a 60 Ah
            pack at 20 W is what makes a long endurance mission readable. -->
@@ -77,8 +70,30 @@
         <start_draining>true</start_draining>
         <fix_issue_225>true</fix_issue_225>
       </sensor>
-
     </link>
-
+    <lotusim_power>
+      <name>main_battery</name>
+      <type>simple_battery</type>
+      <capacity_ah>100</capacity_ah>
+      <initial_soc>0.45</initial_soc>
+      <voltage_min>4.0</voltage_min>
+      <voltage_nominal>12.0</voltage_nominal>
+    </lotusim_power>
+    <lotusim_power>
+      <name>main_generator</name>
+      <type>simple_generator</type>
+      <fuel_type>hydrogen</fuel_type>
+      <fuel_capacity>0.002</fuel_capacity>
+      <fuel_level_start>0.001</fuel_level_start>
+      <rated_output_w>5000</rated_output_w>
+      <rated_rpm>2000</rated_rpm>
+      <efficiency>0.35</efficiency>
+      <voltage_nominal>48.0</voltage_nominal>
+    </lotusim_power>
+    <lotus_param>
+      <power_system>
+        <power_management_type>default</power_management_type>
+      </power_system>
+    </lotus_param>
   </model>
 </sdf>

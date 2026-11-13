@@ -415,6 +415,12 @@ It also contains four Gazebo multicopter motor plugins:
 
 These plugins apply motor forces to the drone when PX4 publishes actuator commands.
 
+`assets/models/x500_px4/model-battery.sdf` is the same model with the LOTUSim
+[battery sensor](../../systems/sensors/battery_sensor/README.md) on `base_link`
+(`"sdf_file": "model-battery.sdf"` in the scenario). PX4's motor commands do not
+reach it, so it drains at its fixed `power_load`. PX4 keeps its own simulated
+battery, which this sensor does not replace.
+
 ## 13. PX4-Gazebo Communication
 
 No custom PX4 bridge was written for this integration.
