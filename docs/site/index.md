@@ -243,6 +243,7 @@ What LOTUSim is made of <overview>
 Install <_collected/install/index>
 Run a generic scenario <_collected/scenario/README>
 Generic scenario: launch options <_collected/scenario/doc/LAUNCH_OPTIONS>
+Run from Windows (WSL) <_collected/scenario/doc/WINDOWS_WSL>
 Build, rebuild and source <rebuild>
 Unity player problems <unity-troubleshooting>
 ```

@@ -28,7 +28,7 @@ Inside a `<link>` of the vessel's SDF:
 | `latitude`, `longitude` | Position, degrees |
 | `true_heading` | Where the bow points, degrees clockwise from North |
 | `sog` | Speed over ground, horizontal only, m/s |
-| `cog` | Course over ground: where the vessel travels, degrees clockwise from North. Meaningless at rest, as on a real receiver |
+| `cog` | Course over ground: where the vessel travels, degrees clockwise from North. 360, the AIS "not available" value, below 0.05 m/s, where the course is noise |
 | `navigation_status`, `rot`, `positional_accuracy` | Not filled yet |
 
 `true_heading` and `cog` differ by the crab angle when a current pushes the

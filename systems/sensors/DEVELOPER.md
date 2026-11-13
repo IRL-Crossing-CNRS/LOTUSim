@@ -108,6 +108,8 @@ Every sensor type derives from `CustomSensor`, itself a `gz::sensors::Sensor`. I
 `ais_sensor/src/ais_sensor.cpp`. The heading comes from the link's world attitude (ENU,
 converted to a compass bearing); `sog` and `cog` from the vessel's
 `WorldLinearVelocity`, which the physics plugin keeps on the model entity.
+Below 0.05 m/s the course is noise, so `cog` reads 360, the AIS "not
+available" value.
 
 ### IMU
 

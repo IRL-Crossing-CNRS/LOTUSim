@@ -103,7 +103,7 @@ Owns the vessel name↔entity maps and exposes `addEntity()` / `moveEntity()` / 
 
 - **`addEntity()`** - two ways to specify what to spawn:
   - `sdf_string` set, `model_name` empty → the full SDF is loaded as-is.
-  - `model_name` set → loads `$LOTUSIM_MODELS_PATH/<model_name>/<sdf_file or model.sdf>` from disk; if `sdf_string` is also set, its `<lotus_param>` block is parsed and injected into the loaded model's XML before spawning.
+  - `model_name` set → loads `$LOTUSIM_MODELS_PATH/<model_name>/<sdf_file or model.sdf>` from disk; if `sdf_string` is also set, its `<lotus_param>` block is parsed and injected into the loaded model's XML before spawning. When the model already has a `<lotus_param>` (the LRAUV's `power_system`), the scenario's blocks are merged into it, the scenario winning on a block both define: readers only take the first `<lotus_param>`.
 
   The final vessel name comes from `vessel_name`, falling back to the SDF's own model name, then passed through `resolveUniqueName()` (appends `_0`, `_1`, … if already taken). On success the entity is created, parented to the world, and immediately moved to the requested pose via an internal `moveEntity()` call.
 - **`moveEntity()`** - resolves the target by `entity` or `vessel_name`, then sets its `Pose` component. If a non-zero `geo_point` or `heading` is present, it's converted to world XY via the world's spherical-coordinates reference and overrides the Cartesian pose.

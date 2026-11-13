@@ -82,11 +82,11 @@ namespace lotusim::gazebo {
  *      </thrusters>
  *    </aerial>
  *    <surface>
- *      <interface_type>XDynGRPC</interface_type>
+ *      <interface_type>XDynWebSocket</interface_type>
  *      <uri>127.0.0.1:1235</uri>
  *    </surface>
  *    <underwater>
- *      <interface_type>Manual</interface_type>
+ *      <interface_type>Kinematic</interface_type>
  *      <uri>127.0.0.1:1236</uri>
  *    </underwater>
  *    <init_state>Surface</init_state>
