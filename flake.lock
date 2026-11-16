@@ -82,11 +82,11 @@
         "src-yaml-cpp": "src-yaml-cpp"
       },
       "locked": {
-        "lastModified": 1794527574,
-        "narHash": "sha256-7rd7alZvknthK2gd1iF9RllJrgGbLJwO3d/04IwL4mg=",
+        "lastModified": 1794810747,
+        "narHash": "sha256-MfEBeqkr+ZJpurGTmz933Lx6WoIVEvrmJ3TwLhneSYs=",
         "owner": "IRL-Crossing-CNRS",
         "repo": "lxdyn",
-        "rev": "9a32a7cd1d0326736402864a986ef448ea152903",
+        "rev": "cb2e07cfbd781c9956d8765686a8d4fd19a75988",
         "type": "github"
       },
       "original": {
