@@ -30,9 +30,9 @@ environment by itself: nothing needs to be sourced first.
 - `lotusim_core build` runs `mise run build` in the core's `nix develop`
   shell. `lotusim_core build --debug` builds with debug logs and a symlinked
   install. `rebuild` deletes `build/`, `install/` and `log/` first.
-- `lotusim_shell` opens the scenario workspace's shell, built against
-  **your** core clone, with both workspaces sourced. Build the scenario
-  workspace from there:
+- `lotusim_shell` opens the scenario workspace's shell with both
+  workspaces sourced (which core: see below). Build the scenario workspace
+  from there:
 
   ```bash
   lotusim_shell
@@ -44,6 +44,17 @@ environment by itself: nothing needs to be sourced first.
 
 Always build the core first, then the scenario workspace: the scenario
 workspace is built against the core's install.
+
+## Which core the scenario shell uses
+
+`lotusim_shell` chooses by itself:
+
+- **You built your clone of the core** (`lotusim_core build`): it uses
+  your clone, with your changes.
+- **Otherwise:** it uses a core nix has already built, the version the scenario
+  workspace was tested with. Nothing to build.
+
+To go back to the nix core, delete `install/` in your clone.
 
 ## Sourcing
 
@@ -72,15 +83,16 @@ Python and Gazebo where its packages, messages and plugins are.
 
 | You changed, or pulled a change to | Rebuild |
 |---|---|
-| A Gazebo plugin, a sensor, anything in the core's `systems/` | the core |
+| A Gazebo plugin, a sensor, anything in the core's `systems/` | the core (your clone) |
 | A ROS 2 message in the core's `interfaces/` | the core, then the scenario workspace |
 | A model (`assets/models/`), a world (`assets/worlds/`), an xdyn YAML | nothing: they are read from the core's sources |
 | Python in the scenario workspace (`lotusim_sdk`, tasks, agents) | the scenario workspace. Its Python runs from `build/`, not from `src/`: an unbuilt change does not run, even though the scenario JSON next to it is up to date |
 | A scenario JSON (`src/simulation_run/config/`) | nothing: the launcher reads it from the sources |
 | The Unity project | a new player, see below |
 
-When in doubt after a pull of both repositories: `lotusim_core build`, then
-`lotusim_shell` and `colcon build --symlink-install`.
+When in doubt after a pull of both repositories: `lotusim_core build`
+(only with a clone of the core), then `lotusim_shell` and
+`colcon build --symlink-install`.
 
 ## Unity players
 
