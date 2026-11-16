@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="104" viewBox="0 0 800 104" role="img" aria-label="Documentation: irl-crossing-cnrs.github.io/LOTUSim">
+  <rect x="3" y="3" width="794" height="98" rx="10" fill="#ffffff" stroke="#d1242f" stroke-width="6"/>
+  <text x="400" y="47" text-anchor="middle" fill="#d1242f" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="bold">Documentation: irl-crossing-cnrs.github.io/LOTUSim</text>
+  <text x="400" y="80" text-anchor="middle" fill="#d1242f" font-family="Helvetica, Arial, sans-serif" font-size="19">Install, run scenarios, write missions, extend the simulator: start here</text>
+</svg>

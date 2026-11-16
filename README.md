@@ -4,6 +4,16 @@
 
 LOTUSim is a real-time, multi-domain simulation platform for maritime operations. It models realistic surface, underwater, and air physics for aerial drones, surface ships, and underwater vehicles. An immersive interface lets human operators run human-autonomous agent scenarios, and physically accurate models make LOTUSim suitable for training AI algorithms.
 
+<!-- docs-site-banner -->
+## Documentation site
+
+<p align="center"><a href="https://irl-crossing-cnrs.github.io/LOTUSim/"><img src="docs/documentation_site.png" alt="The home page of the documentation site" width="800"></a></p>
+
+<p align="center"><a href="https://irl-crossing-cnrs.github.io/LOTUSim/"><img src="docs/documentation_banner.svg" alt="Documentation: irl-crossing-cnrs.github.io/LOTUSim" width="800"></a></p>
+
+<p align="center"><b><a href="https://irl-crossing-cnrs.github.io/LOTUSim/">Click here to open the documentation</a></b></p>
+<!-- /docs-site-banner -->
+
 ## Three ways to run LOTUSim
 
 Every page of the documentation says which of these it is about.

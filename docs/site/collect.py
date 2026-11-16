@@ -233,9 +233,14 @@ def write_message_reference(core_root: Path):
 SHARED_SECTIONS = re.compile(r"^(videos?|relevant publications|publications|citation|cite|citing|documentation|table of contents)\b", re.I)
 
 
+# The README banner that sends GitHub readers to this site: on the site itself
+# it would point at the page the reader is already on.
+SITE_BANNER = re.compile(r"<!-- docs-site-banner -->.*?<!-- /docs-site-banner -->\n*", re.S)
+
+
 def drop_shared_sections(dest: Path):
     for md in dest.rglob("README.md"):
-        lines = md.read_text(encoding="utf-8").split("\n")
+        lines = SITE_BANNER.sub("", md.read_text(encoding="utf-8")).split("\n")
         out, skipping, fence = [], False, False
         for line in lines:
             if line.lstrip().startswith("```"):
