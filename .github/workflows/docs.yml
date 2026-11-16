@@ -46,6 +46,10 @@ jobs:
       - name: Install Sphinx
         run: pip install -r docs/site/requirements.txt
 
+      # The C++ API reference (api/cpp/), generated from the headers' comments.
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen
+
       - name: Build
         env:
           LOTUSIM_DOCS_SCENARIO_REPO: ${{ runner.temp }}/repos/LOTUSim-generic-scenario
@@ -54,6 +58,7 @@ jobs:
         run: |
           cd docs/site
           python collect.py
+          mkdir -p _cpp_api/api && doxygen Doxyfile.site
           sphinx-build -b html -q . _build/html
 
       # lotusim-links.html is what the printed QR codes open: never publish
