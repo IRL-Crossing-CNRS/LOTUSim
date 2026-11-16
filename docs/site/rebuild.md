@@ -94,6 +94,34 @@ When in doubt after a pull of both repositories: `lotusim_core build`
 (only with a clone of the core), then `lotusim_shell` and
 `colcon build --symlink-install`.
 
+## Getting the latest version of your branch
+
+The installer repository has a script that brings an installation up to
+date without running the installer again:
+
+```bash
+cd How_To_Install_LOTUSim
+./update_deployment_folder.sh
+```
+
+1. It pulls the core and the scenario workspace, each on the branch it is
+   on: it never switches branch. A clone with local changes or local commits
+   is left as it is, with a warning.
+2. It updates the scenario workspace's submodule (the ROS-Unity bridge) to
+   the commit the scenario workspace pins.
+3. It rebuilds the core, then the scenario workspace, in their nix
+   environments.
+4. It rebuilds the bundle given to remote machines
+   (`deployment/build_wheels.sh`) and copies it to
+   `~/Documents/workspace/deployment`, without touching anything else there
+   ([Run agents on another machine](_collected/scenario/deployment/README.md)).
+
+Then open a new `lotusim_shell`: a shell opened before the update
+still sees the old build.
+
+To move to **another** branch, switch it yourself (`git switch <branch>` in
+the clone), or run the installer again, which asks for the branches.
+
 ## Unity players
 
 The launcher never opens the Unity project: it starts a built player from the
